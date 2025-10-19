@@ -28,6 +28,7 @@ app.get("/", (req, res) => {
   res.redirect("/map.html");
 });
 
+
 app.listen(PORT, async () => {
   console.log(`✅ Server running at http://localhost:${PORT}/map.html`);
   await open(`http://localhost:${PORT}/map.html`);
