@@ -1,0 +1,26 @@
+{
+  "name": "fyp-touristrecommendsystem",
+  "version": "1.0.0",
+  "description": "",
+  "main": "tooplate-inner-peace-scripts.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boranDuan/FYP-Tourist-Recommendation-System.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/boranDuan/FYP-Tourist-Recommendation-System/issues"
+  },
+  "homepage": "https://github.com/boranDuan/FYP-Tourist-Recommendation-System#readme",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "open": "^10.2.0"
+  }
+}

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inner Peace - Practices</title>
+    <link href="../tooplate-inner-peace.css" rel="stylesheet">
+</head>
+<body>
+    <div class="geometric-bg"></div>
+
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="index.html" class="logo">
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                    <circle cx="20" cy="20" r="18" fill="none" stroke="url(#logoGradient)" stroke-width="2"/>
+                    <circle cx="20" cy="20" r="14" fill="none" stroke="url(#logoGradient)" stroke-width="1.5" opacity="0.7"/>
+                    <circle cx="20" cy="20" r="10" fill="none" stroke="url(#logoGradient)" stroke-width="1" opacity="0.5"/>
+                    <circle cx="20" cy="20" r="6" fill="none" stroke="url(#logoGradient)" stroke-width="0.5" opacity="0.3"/>
+                    <circle cx="20" cy="20" r="3" fill="url(#logoGradient)"/>
+                </svg>
+                <span class="logo-text">Inner Peace</span>
+            </a>
+            <div class="menu-toggle" onclick="toggleMenu()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="index.html" class="nav-link">Home</a></li>
+                <li><a href="about.html" class="nav-link">About</a></li>
+                <li><a href="practices.html" class="nav-link active">Practices</a></li>
+                <li><a href="resources.html" class="nav-link">Resources</a></li>
+                <li><a href="contact.html" class="nav-link">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Practices Section -->
+    <section id="practices">
+        <div class="practices-container">
+            <h2 class="section-title">Mindfulness Practices</h2>
+            <p class="section-subtitle">Master these core practices to build your mindfulness toolkit</p>
+
+            <div class="practice-layout">
+                <!-- Futuristic Left Timeline -->
+                <div class="timeline-track">
+                    <div class="timeline-progress"></div>
+                    <div class="timeline-points">
+                        <div class="timeline-point active">
+                            <div class="futuristic-label">
+                                <span class="label-text">Foundation</span>
+                            </div>
+                            <div class="timeline-indicator"></div>
+                        </div>
+                        <div class="timeline-point">
+                            <div class="futuristic-label">
+                                <span class="label-text">Breathing</span>
+                            </div>
+                            <div class="timeline-indicator"></div>
+                        </div>
+                        <div class="timeline-point">
+                            <div class="futuristic-label">
+                                <span class="label-text">Awareness</span>
+                            </div>
+                            <div class="timeline-indicator"></div>
+                        </div>
+                        <div class="timeline-point">
+                            <div class="futuristic-label">
+                                <span class="label-text">Integration</span>
+                            </div>
+                            <div class="timeline-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Content Area -->
+                <div class="practice-content-area">
+                    <div class="practice-card-new">
+                        <div class="practice-header">
+                            <div class="practice-icon-new">🧘</div>
+                            <div class="practice-info">
+                                <h3>Foundation Meditation</h3>
+                                <span class="practice-duration">10-20 minutes daily</span>
+                            </div>
+                        </div>
+                        <p class="practice-description">
+                            Begin your journey with guided meditation sessions designed specifically for beginners. Learn the fundamental techniques of sitting meditation, including proper posture, attention anchoring, and working with wandering thoughts. Our progressive approach ensures you build a solid foundation without feeling overwhelmed.
+                        </p>
+                        <div class="practice-benefits">
+                            <a href="#" class="benefit-tag">Stress Reduction</a>
+                            <a href="#" class="benefit-tag">Mental Clarity</a>
+                            <a href="#" class="benefit-tag">Emotional Balance</a>
+                            <a href="#" class="benefit-tag">Better Sleep</a>
+                        </div>
+                    </div>
+
+                    <div class="practice-card-new">
+                        <div class="practice-header">
+                            <div class="practice-icon-new">🌬️</div>
+                            <div class="practice-info">
+                                <h3>Conscious Breathing</h3>
+                                <span class="practice-duration">5-10 minutes as needed</span>
+                            </div>
+                        </div>
+                        <p class="practice-description">
+                            Master the art of breath awareness with techniques that instantly calm your nervous system. From box breathing to 4-7-8 patterns, discover how different breathing exercises can energize, relax, or center you throughout your day. Perfect for managing anxiety and stress in real-time.
+                        </p>
+                        <div class="practice-benefits">
+                            <a href="#" class="benefit-tag">Instant Calm</a>
+                            <a href="#" class="benefit-tag">Energy Boost</a>
+                            <a href="#" class="benefit-tag">Focus Enhancement</a>
+                            <a href="#" class="benefit-tag">Anxiety Relief</a>
+                        </div>
+                    </div>
+
+                    <div class="practice-card-new">
+                        <div class="practice-header">
+                            <div class="practice-icon-new">📝</div>
+                            <div class="practice-info">
+                                <h3>Mindful Awareness</h3>
+                                <span class="practice-duration">15 minutes daily</span>
+                            </div>
+                        </div>
+                        <p class="practice-description">
+                            Develop meta-awareness through journaling and body scan practices. Learn to observe your thoughts, emotions, and physical sensations without judgment. This practice includes gratitude exercises, emotional check-ins, and reflective writing to deepen self-understanding.
+                        </p>
+                        <div class="practice-benefits">
+                            <a href="#" class="benefit-tag">Self-Discovery</a>
+                            <a href="#" class="benefit-tag">Emotional Intelligence</a>
+                            <a href="#" class="benefit-tag">Pattern Recognition</a>
+                            <a href="#" class="benefit-tag">Gratitude</a>
+                        </div>
+                    </div>
+
+                    <div class="practice-card-new">
+                        <div class="practice-header">
+                            <div class="practice-icon-new">🚶</div>
+                            <div class="practice-info">
+                                <h3>Living Mindfully</h3>
+                                <span class="practice-duration">Throughout the day</span>
+                            </div>
+                        </div>
+                        <p class="practice-description">
+                            Integrate mindfulness into every aspect of your daily life. From mindful eating to walking meditation, learn how to transform routine activities into opportunities for presence. Discover how to maintain awareness during work, conversations, and even challenging situations.
+                        </p>
+                        <div class="practice-benefits">
+                            <a href="#" class="benefit-tag">Present Living</a>
+                            <a href="#" class="benefit-tag">Joy in Simple Things</a>
+                            <a href="#" class="benefit-tag">Mindful Communication</a>
+                            <a href="#" class="benefit-tag">Work-Life Balance</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="#privacy">Privacy Policy</a>
+                <a href="#terms">Terms of Service</a>
+                <a href="#support">Support</a>
+            </div>
+            <div class="copyright">
+                <p>&copy; 2025 Inner Peace. All rights reserved. Nurturing minds, one breath at a time.
+                Designed by <a rel="nofollow noopener" href="https://www.tooplate.com" target="_blank" style="color: var(--accent); text-decoration: none; transition: color 0.3s ease;">Tooplate</a></p>
+            </div>
+        </div>
+    </footer>
+<script src="../tooplate-inner-peace-scripts.js"></script>
+</body>
+</html>

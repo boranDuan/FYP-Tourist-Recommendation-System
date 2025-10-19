@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Dublin Map (collapse right fixed)</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+
+  #map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;
+    width: 100%;
+
+    transition: left 0.6s ease, right 0.6s ease, width 0.6s ease;
+    will-change: left, width;
+  }
+
+
+  .collapse-btn {
+    position:absolute;
+    top:20px;
+    left:20px;
+    background:white;
+    border-radius:8px;
+    padding:6px 10px;
+    cursor:pointer;
+    box-shadow:0 2px 6px rgba(0,0,0,0.3);
+    font-size:18px;
+    user-select:none;
+    z-index:1000;
+    transition: all 0.6s ease;
+  }
+
+
+  .weather-menu {
+    position:absolute; top:80px; right:20px;
+    background:white; border-radius:12px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.2);
+    font-family:Arial, sans-serif;
+    cursor:pointer;
+    overflow:hidden;
+    z-index:1000;
+  }
+
+  .weather-header { padding:10px 16px; font-weight:bold; font-size:14px; text-align:left; }
+  .weather-options { display:none; flex-direction:column; border-top:1px solid #ddd; }
+  .weather-menu.active .weather-options { display:flex; }
+  .weather-option { padding:8px 14px; font-size:14px; border-top:1px solid #f1f1f1; background:white; }
+  .weather-option:hover { background:#f7f7f7; }
+
+  /* 图例样式 */
+  .legend {
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    background:white;
+    padding:8px 12px;
+    border-radius:8px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.2);
+    font-size:12px;
+    display:none;
+    width:240px;
+  }
+  .legend .bar { width:200px; height:10px; margin-top:4px; }
+  #legend-container {
+    position:absolute;
+    bottom:15px;
+    left:50%;
+    transform:translateX(-50%);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    z-index:1000;
+  }
+
+
+  .collapsed #map {
+  left: 50%;
+  right: 0;
+  width: 50%;
+}
+
+
+.collapsed .collapse-btn {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+
+  body:not(.collapsed) .collapse-btn {
+    left: 20px;
+    right: auto;
+  }
+</style>
+</head>
+
+<body>
+<div id="map"></div>
+<div class="collapse-btn" id="collapseBtn" title="Collapse map">→</div>
+
+
+<div class="weather-menu" id="weatherMenu">
+  <div class="weather-header" id="weatherHeader">Weather Layers</div>
+  <div class="weather-options">
+    <div class="weather-option" data-type="temp_new" data-legend="legend-temp">Temperature</div>
+    <div class="weather-option" data-type="precipitation_new" data-legend="legend-rain">Precipitation</div>
+    <div class="weather-option" data-type="wind_new" data-legend="legend-wind">Wind</div>
+    <div class="weather-option" data-type="clouds_new" data-legend="legend-cloud">Clouds</div>
+  </div>
+</div>
+
+
+<div id="legend-container">
+  <div id="legend-temp" class="legend">
+    <div><strong>Temperature (°C)</strong></div>
+    <div class="bar" style="background:linear-gradient(to right,#2c7bb6,#abd9e9,#ffffbf,#fdae61,#d7191c);"></div>
+    <div style="display:flex;justify-content:space-between;"><span>-10</span><span>0</span><span>10</span><span>20</span><span>30+</span></div>
+  </div>
+  <div id="legend-rain" class="legend">
+    <div><strong>Precipitation (mm)</strong></div>
+    <div class="bar" style="background:linear-gradient(to right,#f7fbff,#c6dbef,#6baed6,#2171b5,#08306b);"></div>
+    <div style="display:flex;justify-content:space-between;"><span>0</span><span>2</span><span>5</span><span>10</span><span>20+</span></div>
+  </div>
+  <div id="legend-wind" class="legend">
+    <div><strong>Wind Speed (m/s)</strong></div>
+    <div class="bar" style="background:linear-gradient(to right,#ffffb2,#fecc5c,#fd8d3c,#f03b20,#bd0026);"></div>
+    <div style="display:flex;justify-content:space-between;"><span>0</span><span>5</span><span>10</span><span>15</span><span>20+</span></div>
+  </div>
+  <div id="legend-cloud" class="legend">
+    <div><strong>Cloud Coverage (%)</strong></div>
+    <div class="bar" style="background:linear-gradient(to right,#f0f9e8,#bae4bc,#7bccc4,#2b8cbe,#08589e);"></div>
+    <div style="display:flex;justify-content:space-between;"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+  </div>
+</div>
+
+<script>
+let map, activeLayer=null, activeLegend=null, selectedOption=null;
+let CONFIG = {}; // 用于存储从后端拿到的 key
+
+// 🚀 第一步：先拿 key
+fetch('/config')
+  .then(res => res.json())
+  .then(cfg => {
+    CONFIG = cfg;
+    loadGoogleMapScript(cfg.GOOGLE_MAPS_API_KEY);
+  });
+
+// 动态加载 Google Maps 脚本
+function loadGoogleMapScript(apiKey){
+  const script = document.createElement('script');
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initMap`;
+  script.async = true;
+  script.defer = true;
+  document.head.appendChild(script);
+}
+
+// 初始化地图
+function initMap(){
+  const dublin={lat:53.3498,lng:-6.2603};
+  map=new google.maps.Map(document.getElementById("map"),{zoom:12,center:dublin});
+  new google.maps.Marker({position:dublin,map,title:"Dublin"});
+
+  const btn=document.getElementById("collapseBtn");
+  btn.addEventListener("click",()=>{
+    const body=document.body;
+    body.classList.toggle("collapsed");
+    btn.textContent=body.classList.contains("collapsed")?"←":"→";
+  });
+
+  const menu=document.getElementById("weatherMenu");
+  const header=document.getElementById("weatherHeader");
+  const options=document.querySelectorAll(".weather-option");
+
+  header.addEventListener("click",()=>{
+    if(selectedOption){
+      clearWeather();
+      selectedOption=null;
+      header.textContent="Weather Layers";
+      menu.classList.remove("active");
+    }else{
+      menu.classList.toggle("active");
+    }
+  });
+
+  options.forEach(opt=>{
+    opt.addEventListener("click",()=>{
+      const layerType=opt.dataset.type;
+      const legendId=opt.dataset.legend;
+
+      selectedOption=opt;
+      header.textContent="✅ "+opt.textContent;
+      menu.classList.remove("active");
+      showLayerAndLegend(layerType,legendId);
+    });
+  });
+}
+
+// 加载天气层
+function showLayerAndLegend(layerType,legendId){
+  const apiKey = CONFIG.OPENWEATHER_API_KEY;
+  map.overlayMapTypes.clear();
+  if(activeLegend) document.getElementById(activeLegend).style.display="none";
+
+  const layer = new google.maps.ImageMapType({
+    getTileUrl:(coord,zoom)=>
+      `https://tile.openweathermap.org/map/${layerType}/${zoom}/${coord.x}/${coord.y}.png?appid=${apiKey}`,
+    tileSize:new google.maps.Size(256,256),
+    name:layerType
+  });
+  map.overlayMapTypes.insertAt(0,layer);
+  activeLayer=layer;
+
+  document.getElementById(legendId).style.display="block";
+  activeLegend=legendId;
+}
+
+// 清除天气层
+function clearWeather(){
+  map.overlayMapTypes.clear();
+  if(activeLegend){
+    document.getElementById(activeLegend).style.display="none";
+    activeLegend=null;
+  }
+  activeLayer=null;
+}
+</script>
+
+</body>
+</html>

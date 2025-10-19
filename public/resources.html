@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inner Peace - Resources</title>
+    <link href="../tooplate-inner-peace.css" rel="stylesheet">
+</head>
+<body>
+    <div class="geometric-bg"></div>
+
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="index.html" class="logo">
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                    <circle cx="20" cy="20" r="18" fill="none" stroke="url(#logoGradient)" stroke-width="2"/>
+                    <circle cx="20" cy="20" r="14" fill="none" stroke="url(#logoGradient)" stroke-width="1.5" opacity="0.7"/>
+                    <circle cx="20" cy="20" r="10" fill="none" stroke="url(#logoGradient)" stroke-width="1" opacity="0.5"/>
+                    <circle cx="20" cy="20" r="6" fill="none" stroke="url(#logoGradient)" stroke-width="0.5" opacity="0.3"/>
+                    <circle cx="20" cy="20" r="3" fill="url(#logoGradient)"/>
+                </svg>
+                <span class="logo-text">Inner Peace</span>
+            </a>
+            <div class="menu-toggle" onclick="toggleMenu()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="index.html" class="nav-link">Home</a></li>
+                <li><a href="about.html" class="nav-link">About</a></li>
+                <li><a href="practices.html" class="nav-link">Practices</a></li>
+                <li><a href="resources.html" class="nav-link active">Resources</a></li>
+                <li><a href="contact.html" class="nav-link">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Resources Section -->
+    <section id="resources">
+        <h2 class="section-title">Resources & Tools</h2>
+        <p class="section-subtitle">Everything you need to support your mindfulness practice</p>
+
+        <div class="resource-tabs">
+            <button class="tab-btn active" onclick="showTab('meditations')">Meditations</button>
+            <button class="tab-btn" onclick="showTab('courses')">Courses</button>
+            <button class="tab-btn" onclick="showTab('tools')">Tools</button>
+        </div>
+
+        <div id="meditations" class="tab-content active">
+            <div class="resource-list">
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail morning-meditation"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Morning Meditation</h3>
+                        <p>Start your day with clarity and intention through our 15-minute morning practice.</p>
+                    </div>
+                </div>
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail stress-relief"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Stress Relief Session</h3>
+                        <p>Quick 10-minute guided meditation for immediate stress and anxiety relief.</p>
+                    </div>
+                </div>
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail sleep-meditation"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Sleep Meditation</h3>
+                        <p>Peaceful bedtime meditation to help you unwind and prepare for restful sleep.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="courses" class="tab-content">
+            <div class="resource-list">
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail mbsr-course"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>8-Week MBSR Program</h3>
+                        <p>Comprehensive Mindfulness-Based Stress Reduction course with certified instructors.</p>
+                    </div>
+                </div>
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail leadership-course"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Mindful Leadership</h3>
+                        <p>Develop presence and emotional intelligence for effective leadership.</p>
+                    </div>
+                </div>
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail beginner-course"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Beginner's Journey</h3>
+                        <p>30-day introduction to mindfulness with daily lessons and practices.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tools" class="tab-content">
+            <div class="resource-list">
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail timer-tool"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Meditation Timer</h3>
+                        <p>Customizable timer with ambient sounds and interval bells for your practice.</p>
+                    </div>
+                </div>
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail mood-tracker"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Mood Tracker</h3>
+                        <p>Monitor your emotional patterns and see how mindfulness impacts your well-being.</p>
+                    </div>
+                </div>
+                <div class="resource-card">
+                    <div class="resource-image">
+                        <div class="resource-thumbnail breathing-tool"></div>
+                    </div>
+                    <div class="resource-body">
+                        <h3>Breathing Exercises</h3>
+                        <p>Interactive breathing patterns for different situations and energy levels.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="#privacy">Privacy Policy</a>
+                <a href="#terms">Terms of Service</a>
+                <a href="#support">Support</a>
+            </div>
+            <div class="copyright">
+                <p>&copy; 2025 Inner Peace. All rights reserved. Nurturing minds, one breath at a time.
+                Designed by <a rel="nofollow noopener" href="https://www.tooplate.com" target="_blank" style="color: var(--accent); text-decoration: none; transition: color 0.3s ease;">Tooplate</a></p>
+            </div>
+        </div>
+    </footer>
+<script src="../tooplate-inner-peace-scripts.js"></script>
+</body>
+</html>
