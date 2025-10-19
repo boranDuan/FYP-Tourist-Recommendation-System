@@ -4,21 +4,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 import open from "open";
 
-// 初始化路径变量
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 载入环境变量
 dotenv.config();
 
-// 创建 express 应用
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 让 public 文件夹可以被直接访问（前端文件放这里）
+// 静态文件
 app.use(express.static(path.join(__dirname, "public")));
 
-// ✅ 新增一个接口，向前端安全返回 key
+// 配置 API 路由
 app.get("/config", (req, res) => {
   res.json({
     GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
@@ -26,7 +23,11 @@ app.get("/config", (req, res) => {
   });
 });
 
-// 启动服务器
+// ✅ 根路径自动跳转
+app.get("/", (req, res) => {
+  res.redirect("/map.html");
+});
+
 app.listen(PORT, async () => {
   console.log(`✅ Server running at http://localhost:${PORT}/map.html`);
   await open(`http://localhost:${PORT}/map.html`);
