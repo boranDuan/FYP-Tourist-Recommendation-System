@@ -1,10 +1,300 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="utf-8">
+    <title>{% block title %}My Travel App{% endblock %}</title>
+    <!-- Font Awesome 图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Material Symbols 图标库 -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+      /* 这里可以放导航栏和公共样式 */
+      body { margin:0; font-family: Arial, sans-serif; }
+      .sidebar {
+          position: fixed;
+          left: 0; top: 0; bottom: 0;
+          width: 60px; /* 折叠状态 */
+          background:#fff; border-right:1px solid #ccc;
+          transition: width 0.3s;
+          overflow:hidden;
+          z-index: 1000;
+          display: flex;
+          flex-direction: column;
+      }
+      .sidebar.expanded { width: 180px; }
+      
+      /* 展开按钮 - 三叶草图标 */
+      .expand-btn {
+          padding: 20px 15px;
+          text-align: center;
+          cursor: pointer;
+          position: relative;
+          border-bottom: 1px solid #eee;
+      }
+      .expand-btn:hover { background:#f0f0f0; }
+      .expand-btn .icon {
+          font-size: 28px;
+          transition: transform 0.3s;
+      }
+      .expand-btn .icon.expand-icon {
+          width: 32px;
+          height: 32px;
+          object-fit: contain;
+          display: inline-block;
+      }
+      /* 收起状态：悬停时显示右箭头 → */
+      .sidebar:not(.expanded) .expand-btn:not(:hover) .icon.expand-icon {
+          display: inline-block;
+      }
+      .sidebar:not(.expanded) .expand-btn:hover .icon.expand-icon {
+          display: none;
+      }
+      .sidebar:not(.expanded) .expand-btn .icon.arrow-icon-right {
+          display: none;
+      }
+      .sidebar:not(.expanded) .expand-btn .icon.arrow-icon-left {
+          display: none;
+      }
+      .sidebar:not(.expanded) .expand-btn:hover .icon.arrow-icon-right {
+          display: inline-block;
+      }
+      /* 展开状态：悬停时显示左箭头 ← */
+      .sidebar.expanded .expand-btn:not(:hover) .icon.expand-icon {
+          display: inline-block;
+      }
+      .sidebar.expanded .expand-btn:hover .icon.expand-icon {
+          display: none;
+      }
+      .sidebar.expanded .expand-btn .icon.arrow-icon-right {
+          display: none;
+      }
+      .sidebar.expanded .expand-btn .icon.arrow-icon-left {
+          display: none;
+      }
+      .sidebar.expanded .expand-btn:hover .icon.arrow-icon-left {
+          display: inline-block;
+      }
+      
+      /* 侧边栏项目 */
+      .sidebar .item { 
+          padding: 20px 15px; 
+          cursor:pointer;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+      }
+      .sidebar .item:hover { background:#f0f0f0; }
+      .sidebar .item .icon {
+          font-size: 30px;
+          min-width: 32px;
+          text-align: center;
+          flex-shrink: 0;
+      }
+      /* Login 按钮固定在底部 - 使用 margin-top: auto 在 flex 布局中推到底部 */
+      .sidebar .item.login-item {
+          margin-top: auto;
+          border-top: 1px solid #eee;
+      }
+      .sidebar .label { 
+          display:none; 
+          margin-left:10px; 
+          white-space: nowrap;
+      }
+      .sidebar.expanded .label { 
+          display:inline-block; 
+      }
+      
+    /* 悬停时显示文字提示 - 只在折叠状态显示 */
+.sidebar:not(.expanded) .item {
+    justify-content: center;
+}
+
+/* 展开时隐藏 tooltip */
+.sidebar.expanded .item .label-tooltip {
+    display: none !important;
+}
+
+/* 折叠时 tooltip 样式 */
+.sidebar:not(.expanded) .item {
+    position: relative;
+}
+.sidebar:not(.expanded) .item .label-tooltip {
+    display: none;
+    position: fixed; /* 使用 fixed 避免被 overflow:hidden 裁剪 */
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    white-space: nowrap;
+    z-index: 2000;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: opacity 0.2s ease;
+}
+
+/* 悬停时显示 tooltip */
+.sidebar:not(.expanded) .item:hover .label-tooltip {
+    display: block !important;
+    opacity: 1;
+}
+
+/* tooltip 小箭头 */
+.sidebar:not(.expanded) .item .label-tooltip::before {
+    content: "";
+    position: absolute;
+    left: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent rgba(0, 0, 0, 0.85) transparent transparent;
+}
+      
+      
+    
+      .content { 
+        margin-left: 60px; 
+        transition: margin-left 0.3s;
+        min-height: 100vh;
+        cursor: pointer; /* 收起时可以点击展开 */
+      }
+      .content.expanded { 
+        margin-left: 180px;
+        cursor: default; /* 展开后恢复正常光标 */
+      }
+      /* 展开状态下，点击内容区域可以收缩 */
+      .content.expanded {
+        position: relative;
+      }
+    </style>
+    {% block extra_styles %}{% endblock %}
 </head>
 <body>
-$END$
+    <div class="sidebar" id="sidebar">
+        <div class="expand-btn" id="expandBtn">
+            <img src="{{ url_for('images', filename='Clover-icon.png') }}" alt="Clover" class="icon expand-icon" />
+            <span class="icon arrow-icon-right">→</span>
+            <span class="icon arrow-icon-left">←</span>
+        </div>
+        <div class="item" data-label="Search"><span class="material-symbols-outlined icon">map_search</span> <span class="label">Search</span><span class="label-tooltip">Search</span></div>
+        <div class="item" data-label="AI Recommendation"><span class="material-symbols-outlined icon">chat</span> <span class="label">AI Recommendation</span><span class="label-tooltip">AI Recommendation</span></div>
+        <div class="item" data-label="My Trip"><span class="material-symbols-outlined icon">trip</span> <span class="label">My Trip</span><span class="label-tooltip">My Trip</span></div>
+        <div class="item" data-label="My Favorite"><span class="material-symbols-outlined icon">map_pin_heart</span> <span class="label">My Favorite</span><span class="label-tooltip">My Favorite</span></div>
+        <div class="item" data-label="Connect"><span class="material-symbols-outlined icon">mail</span> <span class="label">Connect</span><span class="label-tooltip">Connect</span></div>
+        <div class="item" data-label="Settings"><span class="material-symbols-outlined icon">settings</span> <span class="label">Settings</span><span class="label-tooltip">Settings</span></div>
+        <div class="item login-item" data-label="Login"><span class="material-symbols-outlined icon">account_box</span> <span class="label">Login</span><span class="label-tooltip">Login</span></div>
+    </div>
+
+    <div class="content" id="content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const content = document.getElementById('content');
+        const expandBtn = document.getElementById('expandBtn');
+        const items = document.querySelectorAll('.sidebar .item');
+        
+        // 展开侧边栏
+        function expandSidebar() {
+            if (!sidebar.classList.contains('expanded')) {
+                sidebar.classList.add('expanded');
+                content.classList.add('expanded');
+                const isExpanded = true;
+                window.dispatchEvent(new CustomEvent('sidebarToggle', { 
+                    detail: { expanded: isExpanded } 
+                }));
+            }
+        }
+        
+        // 收起侧边栏
+        function collapseSidebar() {
+            if (sidebar.classList.contains('expanded')) {
+                sidebar.classList.remove('expanded');
+                content.classList.remove('expanded');
+                const isExpanded = false;
+                window.dispatchEvent(new CustomEvent('sidebarToggle', { 
+                    detail: { expanded: isExpanded } 
+                }));
+            }
+        }
+        
+        // 切换侧边栏展开/收起
+        function toggleSidebar() {
+            if (sidebar.classList.contains('expanded')) {
+                collapseSidebar();
+            } else {
+                expandSidebar();
+            }
+        }
+        
+        // 点击展开按钮切换
+        expandBtn.addEventListener('click', (e)=>{
+            e.stopPropagation(); // 阻止事件冒泡
+            toggleSidebar();
+        });
+        
+        // 收起状态下，点击内容区域可以展开
+        content.addEventListener('click', (e) => {
+            if (!sidebar.classList.contains('expanded')) {
+                expandSidebar();
+            }
+        });
+        
+        // 展开状态下，点击任意地方都可以收缩（除了侧边栏本身）
+        document.addEventListener('click', (e) => {
+            if (sidebar.classList.contains('expanded')) {
+                // 如果点击的不是侧边栏内的元素，则收缩
+                if (!sidebar.contains(e.target)) {
+                    collapseSidebar();
+                }
+            }
+        });
+        
+        // 动态更新 tooltip 位置
+        function updateTooltipPosition(item) {
+            if (!sidebar.classList.contains('expanded')) {
+                const tooltip = item.querySelector('.label-tooltip');
+                if (tooltip) {
+                    const rect = item.getBoundingClientRect();
+                    tooltip.style.left = (rect.right + 10) + 'px';
+                    
+                    // Login 按钮的 tooltip 显示在底部，其他按钮显示在中间
+                    if (item.classList.contains('login-item')) {
+                        tooltip.style.top = (rect.bottom) + 'px';
+                        tooltip.style.transform = 'translateY(-100%)';
+                    } else {
+                        tooltip.style.top = (rect.top + rect.height / 2) + 'px';
+                        tooltip.style.transform = 'translateY(-50%)';
+                    }
+                }
+            }
+        }
+        
+        // 为每个 item 添加鼠标悬停事件来更新 tooltip 位置
+        items.forEach(item => {
+            item.addEventListener('mouseenter', () => {
+                if (!sidebar.classList.contains('expanded')) {
+                    updateTooltipPosition(item);
+                }
+            });
+        });
+        
+        // 窗口大小变化时更新 tooltip 位置
+        window.addEventListener('resize', () => {
+            items.forEach(item => {
+                if (!sidebar.classList.contains('expanded') && item.matches(':hover')) {
+                    updateTooltipPosition(item);
+                }
+            });
+        });
+        
+    </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>
+

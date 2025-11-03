@@ -1,10 +1,18 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Dublin Map (collapse right fixed)</title>
+{% extends "base.html" %}
+
+{% block title %}Dublin Map{% endblock %}
+
+{% block extra_styles %}
 <style>
   html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+  
+  /* 确保 content 区域占满剩余空间 */
+  .content {
+    position: relative;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+  }
 
   #map {
     position: absolute;
@@ -36,7 +44,7 @@
 
 
   .weather-menu {
-    position:absolute; top:80px; right:20px;
+    position:absolute; top:80px; right:50px;
     background:white; border-radius:12px;
     box-shadow:0 2px 6px rgba(0,0,0,0.2);
     font-family:Arial, sans-serif;
@@ -50,6 +58,7 @@
   .weather-menu.active .weather-options { display:flex; }
   .weather-option { padding:8px 14px; font-size:14px; border-top:1px solid #f1f1f1; background:white; }
   .weather-option:hover { background:#f7f7f7; }
+  .weather-option.hidden { display:none !important; }
 
   /* 图例样式 */
   .legend {
@@ -67,7 +76,7 @@
   .legend .bar { width:200px; height:10px; margin-top:4px; }
   #legend-container {
     position:absolute;
-    bottom:15px;
+    bottom:100px;
     left:50%;
     transform:translateX(-50%);
     display:flex;
@@ -78,26 +87,29 @@
 
 
   .collapsed #map {
-  left: 50%;
-  right: 0;
-  width: 50%;
-}
+    left: 50%;
+    right: 0;
+    width: 50%;
+  }
 
-
-.collapsed .collapse-btn {
-  left: 50%;
-  transform: translateX(-50%);
-}
-
+  .collapsed .collapse-btn {
+    left: calc(50% + 10px);
+    transform: translateX(-50%);
+  }
 
   body:not(.collapsed) .collapse-btn {
     left: 20px;
     right: auto;
   }
-</style>
-</head>
+  
 
-<body>
+  body:not(.collapsed) .content.expanded .collapse-btn {
+    left: 20px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
 <div id="map"></div>
 <div class="collapse-btn" id="collapseBtn" title="Collapse map">→</div>
 
@@ -105,6 +117,7 @@
 <div class="weather-menu" id="weatherMenu">
   <div class="weather-header" id="weatherHeader">Weather Layers</div>
   <div class="weather-options">
+    <div class="weather-option default-option" id="defaultOption">Default</div>
     <div class="weather-option" data-type="temp_new" data-legend="legend-temp">Temperature</div>
     <div class="weather-option" data-type="precipitation_new" data-legend="legend-rain">Precipitation</div>
     <div class="weather-option" data-type="wind_new" data-legend="legend-wind">Wind</div>
@@ -135,12 +148,13 @@
     <div style="display:flex;justify-content:space-between;"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
   </div>
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
 let map, activeLayer=null, activeLegend=null, selectedOption=null;
-let CONFIG = {}; // 用于存储从后端拿到的 key
+let CONFIG = {}; 
 
-// 🚀 第一步：先拿 key
 fetch('/config')
   .then(res => res.json())
   .then(cfg => {
@@ -148,7 +162,7 @@ fetch('/config')
     loadGoogleMapScript(cfg.GOOGLE_MAPS_API_KEY);
   });
 
-// 动态加载 Google Maps 脚本
+
 function loadGoogleMapScript(apiKey){
   const script = document.createElement('script');
   script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initMap`;
@@ -157,7 +171,7 @@ function loadGoogleMapScript(apiKey){
   document.head.appendChild(script);
 }
 
-// 初始化地图
+
 function initMap(){
   const dublin={lat:53.3498,lng:-6.2603};
   map=new google.maps.Map(document.getElementById("map"),{zoom:12,center:dublin});
@@ -174,31 +188,69 @@ function initMap(){
   const header=document.getElementById("weatherHeader");
   const options=document.querySelectorAll(".weather-option");
 
+  // 更新选项显示：已选图层时隐藏当前选中的，显示其他选项和默认选项
+  function updateOptionsVisibility(){
+    options.forEach(opt=>{
+      if(opt.classList.contains("default-option")){
+        // 默认选项：只有在已选择图层时才显示
+        if(selectedOption){
+          opt.classList.remove("hidden");
+        }else{
+          opt.classList.add("hidden");
+        }
+      }else if(selectedOption && opt===selectedOption){
+        // 当前选中的图层：隐藏
+        opt.classList.add("hidden");
+      }else{
+        // 其他图层：显示
+        opt.classList.remove("hidden");
+      }
+    });
+  }
+
+  // 获取默认选项
+  const defaultOption = document.getElementById("defaultOption");
+
+  // 点击 header：只控制菜单显示/隐藏
   header.addEventListener("click",()=>{
-    if(selectedOption){
-      clearWeather();
-      selectedOption=null;
-      header.textContent="Weather Layers";
-      menu.classList.remove("active");
-    }else{
-      menu.classList.toggle("active");
-    }
+    menu.classList.toggle("active");
+    updateOptionsVisibility();
   });
 
+  // 点击默认选项：清除图层并关闭菜单
+  defaultOption.addEventListener("click",()=>{
+    clearWeather();
+    selectedOption=null;
+    header.textContent="Weather Layers";
+    menu.classList.remove("active");
+    updateOptionsVisibility();
+  });
+
+  // 点击其他选项：选择图层并关闭菜单
   options.forEach(opt=>{
+    // 跳过默认选项，它已经有自己的事件处理
+    if(opt.classList.contains("default-option")){
+      return;
+    }
+    
     opt.addEventListener("click",()=>{
       const layerType=opt.dataset.type;
       const legendId=opt.dataset.legend;
 
       selectedOption=opt;
       header.textContent="✅ "+opt.textContent;
+      // 选择图层后关闭菜单
       menu.classList.remove("active");
+      updateOptionsVisibility();
       showLayerAndLegend(layerType,legendId);
     });
   });
+
+  // 初始化选项可见性
+  updateOptionsVisibility();
 }
 
-// 加载天气层
+
 function showLayerAndLegend(layerType,legendId){
   const apiKey = CONFIG.OPENWEATHER_API_KEY;
   map.overlayMapTypes.clear();
@@ -217,7 +269,7 @@ function showLayerAndLegend(layerType,legendId){
   activeLegend=legendId;
 }
 
-// 清除天气层
+
 function clearWeather(){
   map.overlayMapTypes.clear();
   if(activeLegend){
@@ -227,6 +279,4 @@ function clearWeather(){
   activeLayer=null;
 }
 </script>
-
-</body>
-</html>
+{% endblock %}
