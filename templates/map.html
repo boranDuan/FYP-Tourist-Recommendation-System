@@ -44,7 +44,7 @@
 
 
   .weather-menu {
-    position:absolute; top:80px; right:50px;
+    position:absolute; top:80px; right:70px;
     background:white; border-radius:12px;
     box-shadow:0 2px 6px rgba(0,0,0,0.2);
     font-family:Arial, sans-serif;
@@ -238,7 +238,16 @@ function initMap(){
       const legendId=opt.dataset.legend;
 
       selectedOption=opt;
-      header.textContent="✅ "+opt.textContent;
+      // 每个图层都有对应的图标
+      if(layerType === "wind_new"){
+        header.innerHTML='<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">air</span> '+opt.textContent;
+      }else if(layerType === "temp_new"){
+        header.innerHTML='<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">thermometer</span> '+opt.textContent;
+      }else if(layerType === "precipitation_new"){
+        header.innerHTML='<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">rainy</span> '+opt.textContent;
+      }else if(layerType === "clouds_new"){
+        header.innerHTML='<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">cloud</span> '+opt.textContent;
+      }
       // 选择图层后关闭菜单
       menu.classList.remove("active");
       updateOptionsVisibility();

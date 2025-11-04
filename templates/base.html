@@ -170,6 +170,140 @@
       .content.expanded {
         position: relative;
       }
+      
+      /* 模态窗口样式 */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+      .modal {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        width: 25vw;
+        min-width: 350px;
+        max-width: 450px;
+        position: relative;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+      @media (max-width: 768px) {
+        .modal {
+          width: 90%;
+          min-width: 300px;
+        }
+      }
+      .modal-close {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background 0.2s;
+      }
+      .modal-close:hover {
+        background: #f0f0f0;
+      }
+      .modal-title {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 25px;
+        text-align: center;
+      }
+      .form-group {
+        margin-bottom: 20px;
+      }
+      .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: #333;
+        font-weight: 500;
+      }
+      .form-input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+      }
+      .form-input:focus {
+        outline: none;
+        border-color: #4a90e2;
+      }
+      .form-link {
+        color: #4a90e2;
+        text-decoration: none;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .form-link:hover {
+        text-decoration: underline;
+      }
+      .form-submit {
+        width: 100%;
+        padding: 12px;
+        background: #4a90e2;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        margin-top: 10px;
+        transition: background 0.2s;
+      }
+      .form-submit:hover {
+        background: #357abd;
+      }
+      .form-submit:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .guest-link {
+        text-align: center;
+        margin-top: 20px;
+        font-size: 13px;
+        color: #666;
+      }
+      .guest-link a {
+        color: #4a90e2;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .guest-link a:hover {
+        text-decoration: underline;
+      }
+      .error-message {
+        color: #e74c3c;
+        font-size: 13px;
+        margin-top: 5px;
+        display: none;
+      }
+      .error-message.show {
+        display: block;
+      }
     </style>
     {% block extra_styles %}{% endblock %}
 </head>
@@ -181,7 +315,7 @@
             <span class="icon arrow-icon-left">←</span>
         </div>
         <div class="item" data-label="Search"><span class="material-symbols-outlined icon">map_search</span> <span class="label">Search</span><span class="label-tooltip">Search</span></div>
-        <div class="item" data-label="AI Recommendation"><span class="material-symbols-outlined icon">chat</span> <span class="label">AI Recommendation</span><span class="label-tooltip">AI Recommendation</span></div>
+        <div class="item" data-label="AI Recommend"><span class="material-symbols-outlined icon">chat</span> <span class="label">AI Recommendation</span><span class="label-tooltip">AI Recommendation</span></div>
         <div class="item" data-label="My Trip"><span class="material-symbols-outlined icon">trip</span> <span class="label">My Trip</span><span class="label-tooltip">My Trip</span></div>
         <div class="item" data-label="My Favorite"><span class="material-symbols-outlined icon">map_pin_heart</span> <span class="label">My Favorite</span><span class="label-tooltip">My Favorite</span></div>
         <div class="item" data-label="Connect"><span class="material-symbols-outlined icon">mail</span> <span class="label">Connect</span><span class="label-tooltip">Connect</span></div>
@@ -191,6 +325,67 @@
 
     <div class="content" id="content">
         {% block content %}{% endblock %}
+    </div>
+
+    <!-- 登录模态窗口 -->
+    <div class="modal-overlay" id="loginModal">
+        <div class="modal">
+            <button class="modal-close" id="closeLoginModal">&times;</button>
+            <h2 class="modal-title">Login</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label" for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" class="form-input" required>
+                    <div class="error-message" id="loginEmailError"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" class="form-input" required>
+                    <div class="error-message" id="loginPasswordError"></div>
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <span class="form-link" id="showRegisterModal">Don't have an account? Register!</span>
+                </div>
+                <button type="submit" class="form-submit" id="loginSubmit">Login</button>
+                <div class="error-message" id="loginError"></div>
+            </form>
+            <div class="guest-link">
+                <a href="#" id="guestModeLogin">Browse as guest</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 注册模态窗口 -->
+    <div class="modal-overlay" id="registerModal">
+        <div class="modal">
+            <button class="modal-close" id="closeRegisterModal">&times;</button>
+            <h2 class="modal-title">Register</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label class="form-label" for="registerUsername">Username</label>
+                    <input type="text" id="registerUsername" class="form-input" required>
+                    <div class="error-message" id="registerUsernameError"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="registerEmail">Email</label>
+                    <input type="email" id="registerEmail" class="form-input" required>
+                    <div class="error-message" id="registerEmailError"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" class="form-input" required>
+                    <div class="error-message" id="registerPasswordError"></div>
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <span class="form-link" id="showLoginModal">Already have an account? Login!</span>
+                </div>
+                <button type="submit" class="form-submit" id="registerSubmit">Register</button>
+                <div class="error-message" id="registerError"></div>
+            </form>
+            <div class="guest-link">
+                <a href="#" id="guestModeRegister">Browse as guest</a>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -292,6 +487,219 @@
                 }
             });
         });
+        
+        // ========== 登录注册功能 ==========
+        const loginModal = document.getElementById('loginModal');
+        const registerModal = document.getElementById('registerModal');
+        const loginItem = document.querySelector('.login-item');
+        const closeLoginModal = document.getElementById('closeLoginModal');
+        const closeRegisterModal = document.getElementById('closeRegisterModal');
+        const showRegisterModal = document.getElementById('showRegisterModal');
+        const showLoginModal = document.getElementById('showLoginModal');
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+        const guestModeLogin = document.getElementById('guestModeLogin');
+        const guestModeRegister = document.getElementById('guestModeRegister');
+        
+        // 打开登录窗口
+        function openLoginModal() {
+            loginModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // 关闭登录窗口
+        function closeLoginModalFunc() {
+            loginModal.classList.remove('active');
+            document.body.style.overflow = '';
+            clearErrors('login');
+        }
+        
+        // 打开注册窗口
+        function openRegisterModal() {
+            registerModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // 关闭注册窗口
+        function closeRegisterModalFunc() {
+            registerModal.classList.remove('active');
+            document.body.style.overflow = '';
+            clearErrors('register');
+        }
+        
+        // 清除错误信息
+        function clearErrors(type) {
+            const errorElements = document.querySelectorAll(`#${type}Form .error-message`);
+            errorElements.forEach(el => {
+                el.classList.remove('show');
+                el.textContent = '';
+            });
+        }
+        
+        // 显示错误信息
+        function showError(elementId, message) {
+            const errorEl = document.getElementById(elementId);
+            if (errorEl) {
+                errorEl.textContent = message;
+                errorEl.classList.add('show');
+            }
+        }
+        
+        // 点击 Login 按钮打开登录窗口
+        loginItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openLoginModal();
+        });
+        
+        // 关闭按钮
+        closeLoginModal.addEventListener('click', closeLoginModalFunc);
+        closeRegisterModal.addEventListener('click', closeRegisterModalFunc);
+        
+        // 点击遮罩层关闭窗口
+        loginModal.addEventListener('click', (e) => {
+            if (e.target === loginModal) {
+                closeLoginModalFunc();
+            }
+        });
+        registerModal.addEventListener('click', (e) => {
+            if (e.target === registerModal) {
+                closeRegisterModalFunc();
+            }
+        });
+        
+        // 切换窗口
+        showRegisterModal.addEventListener('click', (e) => {
+            e.preventDefault();
+            clearErrors('login');
+            loginModal.classList.remove('active');
+            registerModal.classList.add('active');
+        });
+        
+        showLoginModal.addEventListener('click', (e) => {
+            e.preventDefault();
+            clearErrors('register');
+            registerModal.classList.remove('active');
+            loginModal.classList.add('active');
+        });
+        
+        // 登录表单提交
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearErrors('login');
+            
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showError('loginError', 'Please fill in all fields');
+                return;
+            }
+            
+            const submitBtn = document.getElementById('loginSubmit');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Logging in...';
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    closeLoginModalFunc();
+                    alert('Login successful! Welcome, ' + data.user.username);
+                    // 可以在这里更新 UI，比如显示用户名
+                    location.reload(); // 刷新页面以更新状态
+                } else {
+                    showError('loginError', data.message || 'Login failed');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Login';
+                }
+            } catch (error) {
+                showError('loginError', 'Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Login';
+            }
+        });
+        
+        // 注册表单提交
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearErrors('register');
+            
+            const username = document.getElementById('registerUsername').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            
+            if (!username || !email || !password) {
+                showError('registerError', 'Please fill in all fields');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showError('registerError', 'Password must be at least 6 characters');
+                return;
+            }
+            
+            const submitBtn = document.getElementById('registerSubmit');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Registering...';
+            
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    closeRegisterModalFunc();
+                    alert('Registration successful! Welcome, ' + data.user.username);
+                    location.reload(); // 刷新页面以更新状态
+                } else {
+                    showError('registerError', data.message || 'Registration failed');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Register';
+                }
+            } catch (error) {
+                showError('registerError', 'Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Register';
+            }
+        });
+        
+        // 访客模式
+        const handleGuestMode = async (e) => {
+            e.preventDefault();
+            try {
+                const response = await fetch('/api/guest', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    closeLoginModalFunc();
+                    closeRegisterModalFunc();
+                    // 静默切换到访客模式，不显示弹窗
+                }
+            } catch (error) {
+                console.error('Guest mode error:', error);
+            }
+        };
+        
+        guestModeLogin.addEventListener('click', handleGuestMode);
+        guestModeRegister.addEventListener('click', handleGuestMode);
         
     </script>
     {% block extra_scripts %}{% endblock %}
