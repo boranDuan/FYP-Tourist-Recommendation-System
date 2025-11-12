@@ -55,3 +55,29 @@ class User(db.Model):
             'email': self.email
         }
 
+
+class POI(db.Model):
+    __tablename__ = 'poi'
+
+    poi_id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, index=True)
+    source_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    source = db.Column(db.String(32), nullable=False, default="csv")
+    address = db.Column(db.Text, nullable=True)
+    telephone = db.Column(db.String(64), nullable=True)
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+    opening_hours = db.Column(db.JSON, nullable=True)
+    price_level = db.Column(db.Integer, nullable=True)
+    rating = db.Column(db.Float, nullable=True)
+    tags = db.Column(db.String(255), nullable=True)
+    url = db.Column(db.String(512), nullable=True)
+    photos = db.Column(db.Text, nullable=True)
+
+    def update_from_dict(self, data: dict):
+        for field in [
+            'name', 'address', 'telephone', 'latitude', 'longitude', 'opening_hours',
+            'price_level', 'rating', 'tags', 'url', 'photos', 'source'
+        ]:
+            if field in data:
+                setattr(self, field, data[field])
