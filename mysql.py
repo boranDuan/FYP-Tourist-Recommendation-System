@@ -8,6 +8,13 @@ load_dotenv()
 # 初始化 SQLAlchemy
 db = SQLAlchemy()
 
+poi_filter_association = db.Table(
+    'poi_filter',
+    db.Column('poi_id', db.Integer, db.ForeignKey('poi.poi_id'), primary_key=True),
+    db.Column('filter_id', db.Integer, db.ForeignKey('filters.filter_id'), primary_key=True),
+    db.UniqueConstraint('poi_id', 'filter_id', name='uq_poi_filter')
+)
+
 # 数据库配置：使用 MySQL
 def get_database_config(app):
     """配置数据库连接"""
@@ -70,9 +77,10 @@ class POI(db.Model):
     opening_hours = db.Column(db.JSON, nullable=True)
     price_level = db.Column(db.Integer, nullable=True)
     rating = db.Column(db.Float, nullable=True)
-    tags = db.Column(db.String(255), nullable=True)
+    tags = db.Column(db.Text, nullable=True)
     url = db.Column(db.String(512), nullable=True)
     photos = db.Column(db.Text, nullable=True)
+    filters = db.relationship('Filter', secondary=poi_filter_association, back_populates='pois', lazy='joined')
 
     def update_from_dict(self, data: dict):
         for field in [
@@ -81,3 +89,12 @@ class POI(db.Model):
         ]:
             if field in data:
                 setattr(self, field, data[field])
+
+
+class Filter(db.Model):
+    __tablename__ = 'filters'
+
+    filter_id = db.Column(db.Integer, primary_key=True)
+    filter_name = db.Column(db.String(255), unique=True, nullable=False, index=True)
+
+    pois = db.relationship('POI', secondary=poi_filter_association, back_populates='filters', lazy='dynamic')
