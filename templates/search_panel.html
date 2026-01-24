@@ -79,6 +79,103 @@
     height: 16px;
   }
 
+  /* 顶部 filters 栏 */
+  .filters-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .filter {
+    position: relative;
+  }
+
+  .filter-btn {
+    border: 1px solid #ddd;
+    background: #f8f8f8;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .filter-btn.active {
+    color: #1a73e8;
+    border-color: #1a73e8;
+    background: #eef3ff;
+  }
+
+  .filter-btn:hover {
+    background: #f0f0f0;
+  }
+
+  .filter-dropdown {
+    position: absolute;
+    top: 120%;
+    left: 0;
+    min-width: 160px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    padding: 6px 0;
+    z-index: 950;
+    display: none;
+  }
+
+  .filter.open .filter-dropdown {
+    display: block;
+  }
+
+  .filter-option {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .filter-option:hover {
+    background: #f5f5f5;
+  }
+
+  .filter-option.selected {
+    color: #1a73e8;
+    font-weight: 500;
+  }
+
+  .filter-option.has-sub {
+    position: relative;
+  }
+
+  .filter-submenu {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    margin-left: 4px;
+    min-width: 160px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    padding: 6px 0;
+    display: none;
+  }
+
+  .filter-option.has-sub:hover .filter-submenu {
+    display: block;
+  }
+
+  .filters-divider {
+    height: 1px;
+    background: #eee;
+    margin: 4px 0 8px;
+  }
+
   /* 自动补全和历史下拉 */
   #search-suggestions {
     margin-top: 6px;
@@ -301,14 +398,67 @@
         <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" d="m8 8l4 4m0 0l4 4m-4-4l4-4m-4 4l-4 4" />
       </svg>
     </button>
-    <div class="search-hint">
-      Start typing to search places. Click the input to see your recent searches.
-    </div>
     <div id="search-suggestions"></div>
   </div>
+  <div class="filters-bar">
+    <div class="filter" data-filter-key="attraction" data-base-label="Attraction">
+      <button type="button" class="filter-btn">Attraction</button>
+      <div class="filter-dropdown">
+        <div class="filter-option" data-label="Attraction">All attractions</div>
+        <div class="filter-option" data-label="Museum">Museum</div>
+        <div class="filter-option" data-label="Historic site">Historic Site</div>
+        <div class="filter-option" data-label="Church">Church</div>
+        <div class="filter-option" data-label="Gallery">Gallery</div>
+      </div>
+    </div>
+    <div class="filter" data-filter-key="food" data-base-label="Food & Drinks">
+      <button type="button" class="filter-btn">Food &amp; Drinks</button>
+      <div class="filter-dropdown">
+        <div class="filter-option has-sub">
+          <span data-label="Restaurant">Restaurant</span>
+          <div class="filter-submenu">
+            <div class="filter-option" data-label="Chinese restaurant">Chinese</div>
+            <div class="filter-option" data-label="Irish restaurant">Irish</div>
+            <div class="filter-option" data-label="Italian restaurant">Italian</div>
+            <div class="filter-option" data-label="Japanese restaurant">Japanese</div>
+            <div class="filter-option" data-label="Other restaurant">Other</div>
+          </div>
+        </div>
+        <div class="filter-option" data-label="Cafe">Cafe</div>
+        <div class="filter-option" data-label="Pub">Pub</div>
+      </div>
+    </div>
+    <div class="filter" data-filter-key="facilities" data-base-label="Facilities">
+      <button type="button" class="filter-btn">Facilities</button>
+      <div class="filter-dropdown">
+        <div class="filter-option" data-label="Parking">Parking</div>
+        <div class="filter-option" data-label="Toilet">Toilet</div>
+        <div class="filter-option" data-label="Pharmacy">Pharmacy</div>
+        <div class="filter-option" data-label="ATM / Bank">ATM/Bank</div>
+        <div class="filter-option" data-label="Hospital">Hospital</div>
+        <div class="filter-option" data-label="Gas station">Gas station</div>
+      </div>
+    </div>
+    <div class="filter" data-filter-key="accommodation" data-base-label="Accommodation">
+      <button type="button" class="filter-btn">Accommodation</button>
+      <div class="filter-dropdown">
+        <div class="filter-option" data-label="Hotel">Hotel</div>
+        <div class="filter-option" data-label="Apartment">Apartment</div>
+        <div class="filter-option" data-label="Hostel">Hostel</div>
+      </div>
+    </div>
+    <div class="filter" data-filter-key="shopping" data-base-label="Shopping">
+      <button type="button" class="filter-btn">Shopping</button>
+      <div class="filter-dropdown">
+        <div class="filter-option" data-label="Mall">Mall</div>
+        <div class="filter-option" data-label="Souvenir shop">Souvenir shop</div>
+        <div class="filter-option" data-label="Market">Market</div>
+      </div>
+    </div>
+  </div>
+  <div class="filters-divider"></div>
   <div id="place-details">
     <div class="place-placeholder">
-      Select a place to see full details here.
     </div>
   </div>
 </div>
@@ -322,6 +472,7 @@ let searchMarker = null;
 let searchHistory = [];
 const SEARCH_HISTORY_KEY = 'trs_search_history';
 let autocompleteTimer = null;
+let filterState = {};
 
 function initSearch() {
   const panel = document.getElementById('search-panel');
@@ -329,6 +480,7 @@ function initSearch() {
   const suggestionsEl = document.getElementById('search-suggestions');
   const detailsEl = document.getElementById('place-details');
   const clearBtn = panel ? panel.querySelector('.search-clear-btn') : null;
+  const filters = panel ? panel.querySelectorAll('.filter') : [];
 
   if (!panel || !input || !suggestionsEl || !detailsEl || !placesService || !autocompleteService) {
     return;
@@ -336,6 +488,95 @@ function initSearch() {
 
   // 加载本地历史（只在需要时渲染，不在初始时显示）
   searchHistory = loadSearchHistory();
+
+  // 初始化 filters 状态
+  filters.forEach(filter => {
+    const key = filter.dataset.filterKey;
+    const baseLabel = filter.dataset.baseLabel || '';
+    const btn = filter.querySelector('.filter-btn');
+    if (!key || !btn) return;
+    filterState[key] = {
+      baseLabel,
+      button: btn,
+      parentSelected: false,
+      selectedChildren: new Set(),
+      dropdownPinned: false,
+    };
+
+    // 鼠标移入父 filter：展开
+    filter.addEventListener('mouseenter', () => {
+      filter.classList.add('open');
+    });
+
+    // 鼠标移出父 filter：如果没有固定展开（未选择子类别），则收起
+    filter.addEventListener('mouseleave', () => {
+      const state = filterState[key];
+      if (!state) return;
+      if (!state.dropdownPinned) {
+        filter.classList.remove('open');
+      }
+    });
+
+    // 点击父 filter 本身：选择 / 取消整个父类别
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const state = filterState[key];
+      if (!state) return;
+
+      const hasChildrenSelected = state.selectedChildren.size > 0;
+
+      if (!hasChildrenSelected) {
+        // 没有选择任何子类别时，点击父类别表示选择 / 取消整个父类别
+        state.parentSelected = !state.parentSelected;
+        // 点击父类别后，子类别下拉收起
+        state.dropdownPinned = false;
+        filter.classList.remove('open');
+      } else {
+        // 已经有子类别被选中：再次点击蓝色父类别表示取消整个 filter（父 + 子）
+        state.parentSelected = false;
+        state.selectedChildren.clear();
+        state.dropdownPinned = false;
+        filter.classList.remove('open');
+      }
+
+      updateFilterUIForKey(key);
+    });
+  });
+
+  // 子类别点击：多选，不改变父 filter 文本，父 filter 根据是否有子选择变蓝
+  const allFilterOptions = panel.querySelectorAll('.filter-option');
+  allFilterOptions.forEach(option => {
+    option.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const filterEl = option.closest('.filter');
+      if (!filterEl) return;
+      const key = filterEl.dataset.filterKey;
+      const state = filterState[key];
+      if (!state) return;
+
+      const label = option.dataset.label || option.textContent.trim();
+
+      if (state.selectedChildren.has(label)) {
+        state.selectedChildren.delete(label);
+      } else {
+        state.selectedChildren.add(label);
+      }
+
+      // 有子类别被选中时固定展开，下移鼠标不会立即收起；否则按 hover 逻辑收起
+      state.dropdownPinned = state.selectedChildren.size > 0;
+      if (state.dropdownPinned) {
+        filterEl.classList.add('open');
+      } else {
+        // 如果没有子类别选中，允许鼠标移出后收起
+        filterEl.classList.remove('open');
+      }
+
+      updateFilterUIForKey(key);
+    });
+  });
 
   // 聚焦搜索框且为空时，展示历史
   input.addEventListener('focus', () => {
@@ -391,6 +632,47 @@ function initSearch() {
       return;
     }
     suggestionsEl.innerHTML = '';
+
+    // 点击父 filter 旁边空白区域时，收起所有子类别下拉，但保留选中状态
+    filters.forEach(filter => {
+      if (!filter.contains(e.target)) {
+        const key = filter.dataset.filterKey;
+        const state = filterState[key];
+        if (!state) return;
+        state.dropdownPinned = false;
+        filter.classList.remove('open');
+      }
+    });
+  });
+}
+
+function updateFilterUIForKey(key) {
+  const state = filterState[key];
+  if (!state) return;
+  const { baseLabel, button, parentSelected, selectedChildren } = state;
+  const filterEl = button.closest('.filter');
+  if (!filterEl) return;
+
+  // 父 filter 文本始终保持为原始名称
+  button.textContent = baseLabel;
+
+  // 父 filter 变蓝的条件：自身被选中或有任意子类别被选中
+  const isActive = parentSelected || selectedChildren.size > 0;
+  if (isActive) {
+    button.classList.add('active');
+  } else {
+    button.classList.remove('active');
+  }
+
+  // 子类别的选中样式
+  const options = filterEl.querySelectorAll('.filter-option');
+  options.forEach(opt => {
+    const label = opt.dataset.label || opt.textContent.trim();
+    if (selectedChildren.has(label)) {
+      opt.classList.add('selected');
+    } else {
+      opt.classList.remove('selected');
+    }
   });
 }
 
