@@ -334,24 +334,23 @@ function initSearch() {
     return;
   }
 
-  // 加载本地历史
+  // 加载本地历史（只在需要时渲染，不在初始时显示）
   searchHistory = loadSearchHistory();
-  renderHistory(suggestionsEl);
 
-  // 聚焦时若为空，展示历史
+  // 聚焦搜索框且为空时，展示历史
   input.addEventListener('focus', () => {
     if (!input.value.trim()) {
       renderHistory(suggestionsEl);
     }
   });
 
-  // 清空按钮：清除输入并展示历史
+  // 清空按钮：清除输入并隐藏下拉（再次点击输入框才会出现历史）
   if (clearBtn) {
     clearBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       input.value = '';
-      renderHistory(suggestionsEl);
+      suggestionsEl.innerHTML = '';
       input.focus();
     });
   }
@@ -361,7 +360,8 @@ function initSearch() {
     const value = input.value.trim();
 
     if (!value) {
-      renderHistory(suggestionsEl);
+      // 输入内容被清空时不自动展示历史，只隐藏下拉
+      suggestionsEl.innerHTML = '';
       return;
     }
 
@@ -385,11 +385,12 @@ function initSearch() {
     }, 200);
   });
 
-  // 点击 panel 外部时关闭下拉
+  // 点击除输入框本身以外的任意位置都收起下拉（包括 Search panel 内部其他区域）
   document.addEventListener('click', (e) => {
-    if (!panel.contains(e.target)) {
-      suggestionsEl.innerHTML = '';
+    if (e.target === input) {
+      return;
     }
+    suggestionsEl.innerHTML = '';
   });
 }
 
