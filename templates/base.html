@@ -393,6 +393,7 @@
         const content = document.getElementById('content');
         const expandBtn = document.getElementById('expandBtn');
         const items = document.querySelectorAll('.sidebar .item');
+        const searchItem = document.querySelector('.sidebar .item[data-label="Search"]');
         
         // 展开侧边栏
         function expandSidebar() {
@@ -487,6 +488,18 @@
                 }
             });
         });
+
+        // 处理左侧工作栏 Search 点击：切换地图折叠/搜索区域
+        if (searchItem) {
+            searchItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.body.classList.toggle('collapsed');
+                const collapseBtn = document.getElementById('collapseBtn');
+                if (collapseBtn) {
+                    collapseBtn.textContent = document.body.classList.contains('collapsed') ? '←' : '→';
+                }
+            });
+        }
         
         // ========== 登录注册功能 ==========
         const loginModal = document.getElementById('loginModal');

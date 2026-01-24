@@ -1,0 +1,639 @@
+{% macro search_panel_styles() %}
+  /* 左侧搜索面板，占用折叠后地图左侧的 50% 区域 */
+  #search-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100vh;
+    background: #ffffff;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    padding: 20px 24px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.6s ease, opacity 0.3s ease;
+    z-index: 900;
+  }
+
+  /* 折叠状态下显示搜索面板（地图已经缩到右侧 50%） */
+  body.collapsed #search-panel {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #search-panel h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+  }
+
+  .search-section {
+    position: relative;
+  }
+
+  #search-panel .search-input {
+    width: 100%;
+    padding: 10px 32px 10px 12px; /* 右侧预留清空按钮空间 */
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+
+  #search-panel .search-input:focus {
+    outline: none;
+    border-color: #4a90e2;
+  }
+
+  #search-panel .search-hint {
+    font-size: 13px;
+    color: #666;
+  }
+
+  .search-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+  }
+
+  .search-clear-btn:hover {
+    color: #333;
+  }
+
+  .search-clear-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* 自动补全和历史下拉 */
+  #search-suggestions {
+    margin-top: 6px;
+    border-radius: 8px;
+    border: 1px solid #eee;
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .suggestion-header {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    border-bottom: 1px solid #f1f1f1;
+  }
+
+  .history-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 10px 6px;
+    font-size: 12px;
+    border-bottom: 1px solid #f1f1f1;
+    gap: 8px;
+    color: #888;
+  }
+
+  .clear-history-btn {
+    border: none;
+    background: none;
+    color: #4a90e2;
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+  }
+
+  .clear-history-btn:hover {
+    text-decoration: underline;
+  }
+
+  .suggestion-item {
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+
+  .suggestion-item:hover {
+    background: #f5f5f5;
+  }
+
+  .suggestion-secondary {
+    font-size: 12px;
+    color: #777;
+  }
+
+  .suggestion-empty {
+    padding: 10px;
+    font-size: 13px;
+    color: #999;
+  }
+
+  /* 详情区域 */
+  #place-details {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .place-placeholder {
+    font-size: 13px;
+    color: #777;
+  }
+
+  .place-details-card {
+    border-radius: 10px;
+    border: 1px solid #eee;
+    padding: 12px 14px;
+    background: #fafafa;
+    font-size: 14px;
+  }
+
+  .place-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .place-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+    color: #555;
+    margin-bottom: 6px;
+  }
+
+  .place-rating {
+    font-weight: 600;
+  }
+
+  .place-types {
+    opacity: 0.8;
+  }
+
+  .place-address,
+  .place-phone,
+  .place-website {
+    margin-top: 4px;
+  }
+
+  .place-website a {
+    color: #4a90e2;
+    text-decoration: none;
+  }
+
+  .place-website a:hover {
+    text-decoration: underline;
+  }
+
+  .place-section {
+    margin-top: 10px;
+  }
+
+  .place-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .place-opening-hours {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 13px;
+    color: #555;
+  }
+
+  .place-opening-hours li {
+    margin: 2px 0;
+  }
+
+  .place-photo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .place-photo-grid img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 6px;
+  }
+
+  .place-reviews {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .place-review {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #eee;
+  }
+
+  .place-review-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .place-review-author {
+    font-size: 13px;
+  }
+
+  .place-review-rating {
+    font-size: 12px;
+    color: #f39c12;
+  }
+
+  .place-review-time {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 4px;
+  }
+
+  .place-review-text {
+    font-size: 13px;
+    color: #555;
+  }
+{% endmacro %}
+
+{% macro search_panel_html() %}
+<!-- 左侧搜索面板 -->
+<div id="search-panel">
+  <h2>Search</h2>
+  <div class="search-section">
+    <input
+      type="text"
+      class="search-input"
+      id="search-input"
+      placeholder="Search places in Dublin..."
+      autocomplete="off"
+    >
+    <button
+      type="button"
+      class="search-clear-btn"
+      id="search-clear-btn"
+      title="Clear"
+      aria-label="Clear search"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <!-- Icon from CodeX Icons by CodeX - https://github.com/codex-team/icons -->
+        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" d="m8 8l4 4m0 0l4 4m-4-4l4-4m-4 4l-4 4" />
+      </svg>
+    </button>
+    <div class="search-hint">
+      Start typing to search places. Click the input to see your recent searches.
+    </div>
+    <div id="search-suggestions"></div>
+  </div>
+  <div id="place-details">
+    <div class="place-placeholder">
+      Select a place to see full details here.
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro search_panel_js() %}
+// Places 搜索相关（与地图页面共享的全局变量）
+let placesService = null;
+let autocompleteService = null;
+let searchMarker = null;
+let searchHistory = [];
+const SEARCH_HISTORY_KEY = 'trs_search_history';
+let autocompleteTimer = null;
+
+function initSearch() {
+  const panel = document.getElementById('search-panel');
+  const input = document.getElementById('search-input');
+  const suggestionsEl = document.getElementById('search-suggestions');
+  const detailsEl = document.getElementById('place-details');
+  const clearBtn = panel ? panel.querySelector('.search-clear-btn') : null;
+
+  if (!panel || !input || !suggestionsEl || !detailsEl || !placesService || !autocompleteService) {
+    return;
+  }
+
+  // 加载本地历史
+  searchHistory = loadSearchHistory();
+  renderHistory(suggestionsEl);
+
+  // 聚焦时若为空，展示历史
+  input.addEventListener('focus', () => {
+    if (!input.value.trim()) {
+      renderHistory(suggestionsEl);
+    }
+  });
+
+  // 清空按钮：清除输入并展示历史
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = '';
+      renderHistory(suggestionsEl);
+      input.focus();
+    });
+  }
+
+  // 输入自动补全
+  input.addEventListener('input', () => {
+    const value = input.value.trim();
+
+    if (!value) {
+      renderHistory(suggestionsEl);
+      return;
+    }
+
+    if (!autocompleteService) return;
+
+    if (autocompleteTimer) {
+      clearTimeout(autocompleteTimer);
+    }
+
+    autocompleteTimer = setTimeout(() => {
+      // 全世界范围搜索（不再限制在都柏林）
+      const request = { input: value };
+
+      autocompleteService.getPlacePredictions(request, (predictions, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+          renderSuggestions(suggestionsEl, []);
+          return;
+        }
+        renderSuggestions(suggestionsEl, predictions);
+      });
+    }, 200);
+  });
+
+  // 点击 panel 外部时关闭下拉
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target)) {
+      suggestionsEl.innerHTML = '';
+    }
+  });
+}
+
+function loadSearchHistory() {
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveSearchHistory() {
+  try {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+  } catch (e) {
+    // 忽略本地存储错误
+  }
+}
+
+function addToSearchHistory(entry) {
+  // 去重
+  searchHistory = searchHistory.filter(h => h.placeId !== entry.placeId);
+  searchHistory.unshift(entry);
+  if (searchHistory.length > 10) {
+    searchHistory = searchHistory.slice(0, 10);
+  }
+  saveSearchHistory();
+}
+
+function clearSearchHistory(container) {
+  searchHistory = [];
+  saveSearchHistory();
+  renderHistory(container);
+}
+
+function renderHistory(container) {
+  container.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'suggestion-header';
+  header.textContent = 'Recent searches';
+  container.appendChild(header);
+
+  const actions = document.createElement('div');
+  actions.className = 'history-actions';
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'clear-history-btn';
+  clearBtn.textContent = 'Clear';
+  clearBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearSearchHistory(container);
+  });
+  actions.appendChild(clearBtn);
+  container.appendChild(actions);
+
+  if (!searchHistory.length) {
+    const empty = document.createElement('div');
+    empty.className = 'suggestion-empty';
+    empty.textContent = 'No recent searches.';
+    container.appendChild(empty);
+    return;
+  }
+
+  searchHistory.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'suggestion-item';
+    el.textContent = item.description;
+    el.addEventListener('click', () => {
+      handlePlaceSelected(item.placeId, item.description);
+    });
+    container.appendChild(el);
+  });
+}
+
+function renderSuggestions(container, predictions) {
+  container.innerHTML = '';
+
+  if (!predictions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'suggestion-empty';
+    empty.textContent = 'No results.';
+    container.appendChild(empty);
+    return;
+  }
+
+  predictions.forEach(pred => {
+    const el = document.createElement('div');
+    el.className = 'suggestion-item';
+
+    const mainText = (pred.structured_formatting && pred.structured_formatting.main_text) || pred.description;
+    const secondaryText = pred.structured_formatting && pred.structured_formatting.secondary_text;
+
+    const mainDiv = document.createElement('div');
+    mainDiv.textContent = mainText;
+    el.appendChild(mainDiv);
+
+    if (secondaryText) {
+      const secondaryDiv = document.createElement('div');
+      secondaryDiv.className = 'suggestion-secondary';
+      secondaryDiv.textContent = secondaryText;
+      el.appendChild(secondaryDiv);
+    }
+
+    el.addEventListener('click', () => {
+      handlePlaceSelected(pred.place_id, pred.description);
+    });
+
+    container.appendChild(el);
+  });
+}
+
+function handlePlaceSelected(placeId, description) {
+  const suggestionsEl = document.getElementById('search-suggestions');
+  const detailsEl = document.getElementById('place-details');
+  const input = document.getElementById('search-input');
+
+  if (suggestionsEl) {
+    suggestionsEl.innerHTML = '';
+  }
+  if (input) {
+    input.value = description;
+  }
+  if (!placesService) return;
+
+  const request = {
+    placeId: placeId,
+    fields: [
+      'name',
+      'rating',
+      'user_ratings_total',
+      'formatted_address',
+      'international_phone_number',
+      'website',
+      'opening_hours',
+      'photos',
+      'reviews',
+      'types',
+      'geometry'
+    ]
+  };
+
+  placesService.getDetails(request, (place, status) => {
+    if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
+      if (detailsEl) {
+        detailsEl.innerHTML = '<div class="place-placeholder">Failed to load place details.</div>';
+      }
+      return;
+    }
+
+    addToSearchHistory({
+      placeId: place.place_id || placeId,
+      description: place.name || description
+    });
+
+    // 更新地图上的位置和 marker
+    if (place.geometry && place.geometry.location) {
+      map.setCenter(place.geometry.location);
+      map.setZoom(15);
+      if (searchMarker) {
+        searchMarker.setMap(null);
+      }
+      searchMarker = new google.maps.Marker({
+        map,
+        position: place.geometry.location,
+        title: place.name || description
+      });
+    }
+
+    if (detailsEl) {
+      renderPlaceDetails(detailsEl, place);
+    }
+  });
+}
+
+function renderPlaceDetails(container, place) {
+  const ratingText = place.rating != null ? `${place.rating} / 5` : 'No rating';
+  const totalRatings = place.user_ratings_total != null ? ` (${place.user_ratings_total})` : '';
+
+  const typesText = Array.isArray(place.types) && place.types.length
+    ? place.types.map(t => t.replace(/_/g, ' ')).join(', ')
+    : '';
+
+  const photos = Array.isArray(place.photos) ? place.photos.slice(0, 4) : [];
+  const reviews = Array.isArray(place.reviews) ? place.reviews.slice(0, 3) : [];
+  const opening = place.opening_hours && Array.isArray(place.opening_hours.weekday_text)
+    ? place.opening_hours.weekday_text
+    : null;
+
+  const phone = place.international_phone_number || '';
+  const website = place.website || '';
+
+  let photosHtml = '';
+  if (photos.length) {
+    photosHtml = '<div class="place-photo-grid">' +
+      photos.map(p => {
+        const url = p.getUrl({ maxWidth: 260, maxHeight: 180 });
+        return `<img src="${url}" alt="Photo of ${place.name || ''}">`;
+      }).join('') +
+      '</div>';
+  }
+
+  let openingHtml = '';
+  if (opening) {
+    openingHtml = '<ul class="place-opening-hours">' +
+      opening.map(line => `<li>${line}</li>`).join('') +
+      '</ul>';
+  }
+
+  let reviewsHtml = '';
+  if (reviews.length) {
+    reviewsHtml = '<div class="place-reviews">' +
+      reviews.map(r => `
+        <div class="place-review">
+          <div class="place-review-header">
+            <span class="place-review-author">${r.author_name || 'Anonymous'}</span>
+            ${r.rating != null ? `<span class="place-review-rating">${r.rating}★</span>` : ''}
+          </div>
+          <div class="place-review-time">${r.relative_time_description || ''}</div>
+          <div class="place-review-text">${r.text || ''}</div>
+        </div>
+      `).join('') +
+      '</div>';
+  }
+
+  container.innerHTML = `
+    <div class="place-details-card">
+      <div class="place-title">${place.name || 'Selected place'}</div>
+      <div class="place-meta">
+        ${ratingText ? `<span class="place-rating">${ratingText}${totalRatings}</span>` : ''}
+        ${typesText ? `<span class="place-types">${typesText}</span>` : ''}
+      </div>
+      ${place.formatted_address ? `<div class="place-address">${place.formatted_address}</div>` : ''}
+      ${phone ? `<div class="place-phone">${phone}</div>` : ''}
+      ${website ? `<div class="place-website"><a href="${website}" target="_blank" rel="noopener noreferrer">${website}</a></div>` : ''}
+      ${openingHtml ? `<div class="place-section"><div class="place-section-title">Opening hours</div>${openingHtml}</div>` : ''}
+      ${photosHtml ? `<div class="place-section"><div class="place-section-title">Photos</div>${photosHtml}</div>` : ''}
+      ${reviewsHtml ? `<div class="place-section"><div class="place-section-title">Reviews</div>${reviewsHtml}</div>` : ''}
+    </div>
+  `;
+}
+{% endmacro %}
+
+
