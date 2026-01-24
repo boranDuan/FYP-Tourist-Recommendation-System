@@ -94,26 +94,70 @@
   }
 
   .filter-btn {
-    border: 1px solid #ddd;
-    background: #f8f8f8;
-    border-radius: 999px;
-    padding: 6px 14px;
-    font-size: 13px;
-    cursor: pointer;
+    position: relative;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid #111;
+    background-color: #ffffff;
+    color: #111111;
+    font-size: 13px;
+    font-weight: 600;
     white-space: nowrap;
+    cursor: pointer;
+    overflow: hidden;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.08);
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease,
+      border-color 0.3s ease,
+      transform 0.3s ease,
+      box-shadow 0.3s ease;
   }
 
-  .filter-btn.active {
-    color: #1a73e8;
-    border-color: #1a73e8;
-    background: #eef3ff;
+  .filter-btn::before {
+    content: "";
+    position: absolute;
+    left: -100%;
+    top: 0;
+    width: 140px;
+    height: 140px;
+    background-color: #111111;
+    border-radius: 50%;
+    transition: transform 0.3s ease, left 0.3s ease, border-radius 0.3s ease;
+    opacity: 0.1;
+  }
+
+  .filter-btn:hover::before {
+    transform: translate(100%, -50%);
+    border-radius: 0;
   }
 
   .filter-btn:hover {
-    background: #f0f0f0;
+    background-color: #111111;
+    color: #ffffff;
+    border-color: #111111;
+  }
+
+  .filter-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.18);
+  }
+
+  .filter-btn.active {
+    color: #ffffff;
+    border-color: #111111;
+    background: #111111;
+  }
+
+  /* 当父 filter 悬浮区域（含子类别）打开时，父按钮保持黑底白字 */
+  .filter.open .filter-btn {
+    background-color: #111111;
+    color: #ffffff;
+    border-color: #111111;
   }
 
   .filter-dropdown {
@@ -142,6 +186,7 @@
 
   .filter-option:hover {
     background: #f5f5f5;
+    color: #111111;
   }
 
   .filter-option.selected {
