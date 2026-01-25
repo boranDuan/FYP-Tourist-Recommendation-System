@@ -511,8 +511,56 @@ let searchHistory = [];
 const SEARCH_HISTORY_KEY = 'trs_search_history';
 let autocompleteTimer = null;
 let filterState = {};
+// Step 3: Filter markers 管理
+let filterMarkers = []; // 存储所有 filter 创建的 markers
+
+// ========== Step 1: UI Filter → Google Places API Type 映射表 ==========
+// UI 名称（显示给用户） → Google Places API type（API 可以识别）
+const filterTypeMapping = {
+  // Attraction 类别
+  'Attraction': ['tourist_attraction', 'point_of_interest', 'establishment'],
+  'Museum': ['museum'],
+  'Historic site': ['establishment', 'point_of_interest'],
+  'Historic Site': ['establishment', 'point_of_interest'], // 兼容大小写
+  'Church': ['church'],
+  'Gallery': ['art_gallery'],
+  
+  // Food & Drinks 类别
+  'Food & Drinks': ['restaurant', 'cafe', 'bar', 'food', 'meal_takeaway'],
+  'Restaurant': ['restaurant', 'food'],
+  'Chinese restaurant': ['restaurant'], // 子类别，需要客户端过滤
+  'Irish restaurant': ['restaurant'],
+  'Italian restaurant': ['restaurant'],
+  'Japanese restaurant': ['restaurant'],
+  'Other restaurant': ['restaurant'],
+  'Cafe': ['cafe', 'bakery'],
+  'Pub': ['bar', 'night_club'],
+  
+  // Facilities 类别
+  'Facilities': ['parking', 'gas_station', 'atm', 'bank', 'hospital', 'pharmacy'],
+  'Parking': ['parking'],
+  'Toilet': ['establishment'],
+  'Pharmacy': ['pharmacy', 'drugstore'],
+  'ATM / Bank': ['atm', 'bank'],
+  'ATM/Bank': ['atm', 'bank'], // 兼容格式
+  'Hospital': ['hospital', 'doctor'],
+  'Gas station': ['gas_station'],
+  
+  // Accommodation 类别
+  'Accommodation': ['lodging'],
+  'Hotel': ['lodging'],
+  'Apartment': ['lodging'],
+  'Hostel': ['lodging'],
+  
+  // Shopping 类别
+  'Shopping': ['shopping_mall', 'store', 'supermarket'],
+  'Mall': ['shopping_mall'],
+  'Souvenir shop': ['store'],
+  'Market': ['supermarket', 'store']
+};
 
 function initSearch() {
+  console.log('[DEBUG] initSearch 被调用');
   const panel = document.getElementById('search-panel');
   const input = document.getElementById('search-input');
   const suggestionsEl = document.getElementById('search-suggestions');
@@ -520,8 +568,27 @@ function initSearch() {
   const clearBtn = panel ? panel.querySelector('.search-clear-btn') : null;
   const filters = panel ? panel.querySelectorAll('.filter') : [];
 
-  if (!panel || !input || !suggestionsEl || !detailsEl || !placesService || !autocompleteService) {
+  console.log('[DEBUG] 检查元素:', {
+    panel: !!panel,
+    input: !!input,
+    suggestionsEl: !!suggestionsEl,
+    detailsEl: !!detailsEl,
+    placesService: !!placesService,
+    autocompleteService: !!autocompleteService,
+    filtersCount: filters.length
+  });
+
+  // Step 1: Filter 事件绑定不依赖于 placesService/autocompleteService
+  // 因为 Step 1 只需要打印映射，不需要 API
+  if (!panel || !input || !suggestionsEl || !detailsEl) {
+    console.error('[DEBUG] 缺少必需的 DOM 元素');
     return;
+  }
+
+  // 如果 placesService 或 autocompleteService 未初始化，只初始化 filter 部分
+  // 其他功能（搜索、自动补全）等 API 初始化后再使用
+  if (!placesService || !autocompleteService) {
+    console.warn('[DEBUG] placesService 或 autocompleteService 未初始化，只初始化 filter 功能');
   }
 
   // 加载本地历史（只在需要时渲染，不在初始时显示）
@@ -557,10 +624,14 @@ function initSearch() {
 
     // 点击父 filter 本身：选择 / 取消整个父类别
     btn.addEventListener('click', (e) => {
+      console.log('[DEBUG] Filter 按钮被点击:', key);
       e.preventDefault();
       e.stopPropagation();
       const state = filterState[key];
-      if (!state) return;
+      if (!state) {
+        console.error('[DEBUG] Filter state 不存在:', key);
+        return;
+      }
 
       const hasChildrenSelected = state.selectedChildren.size > 0;
 
@@ -584,18 +655,25 @@ function initSearch() {
 
   // 子类别点击：多选，不改变父 filter 文本，父 filter 根据是否有子选择变蓝
   const allFilterOptions = panel.querySelectorAll('.filter-option');
+  console.log('[DEBUG] 找到子类别选项数量:', allFilterOptions.length);
   allFilterOptions.forEach(option => {
     option.addEventListener('click', (e) => {
+      const label = option.dataset.label || option.textContent.trim();
+      console.log('[DEBUG] 子类别选项被点击:', label);
       e.preventDefault();
       e.stopPropagation();
 
       const filterEl = option.closest('.filter');
-      if (!filterEl) return;
+      if (!filterEl) {
+        console.error('[DEBUG] 找不到父 filter');
+        return;
+      }
       const key = filterEl.dataset.filterKey;
       const state = filterState[key];
-      if (!state) return;
-
-      const label = option.dataset.label || option.textContent.trim();
+      if (!state) {
+        console.error('[DEBUG] Filter state 不存在:', key);
+        return;
+      }
 
       if (state.selectedChildren.has(label)) {
         state.selectedChildren.delete(label);
@@ -682,14 +760,67 @@ function initSearch() {
       }
     });
   });
+
+  console.log('[DEBUG] initSearch 完成！Filter 事件已绑定');
+  console.log('[DEBUG] filterState:', Object.keys(filterState));
+}
+
+/**
+ * 根据选中的 filter 获取对应的 Google Places API types
+ * @returns {Array<string>} Google Places API types 数组
+ */
+function getSelectedPlacesTypes() {
+  const allTypes = new Set();
+  
+  Object.keys(filterState).forEach(key => {
+    const state = filterState[key];
+    if (!state) return;
+    
+    const { baseLabel, parentSelected, selectedChildren } = state;
+    
+    if (parentSelected) {
+      // 父类别被选中：获取父类别对应的 types，以及所有子类别对应的 types
+      const parentTypes = filterTypeMapping[baseLabel] || [];
+      parentTypes.forEach(type => allTypes.add(type));
+      
+      // 获取该父类别下的所有子类别对应的 types
+      const filterEl = state.button.closest('.filter');
+      if (filterEl) {
+        const options = filterEl.querySelectorAll('.filter-option');
+        options.forEach(opt => {
+          const label = opt.dataset.label || opt.textContent.trim();
+          // 排除 "All attractions" 这样的选项（label 等于 baseLabel）
+          if (label !== baseLabel) {
+            const childTypes = filterTypeMapping[label] || [];
+            childTypes.forEach(type => allTypes.add(type));
+          }
+        });
+      }
+    } else if (selectedChildren.size > 0) {
+      // 有子类别被选中：只获取选中子类别对应的 types
+      selectedChildren.forEach(label => {
+        const childTypes = filterTypeMapping[label] || [];
+        childTypes.forEach(type => allTypes.add(type));
+      });
+    }
+  });
+  
+  return Array.from(allTypes);
 }
 
 function updateFilterUIForKey(key) {
+  console.log('[DEBUG] updateFilterUIForKey 被调用:', key);
   const state = filterState[key];
-  if (!state) return;
+  if (!state) {
+    console.error('[DEBUG] Filter state 不存在:', key);
+    return;
+  }
   const { baseLabel, button, parentSelected, selectedChildren } = state;
   const filterEl = button.closest('.filter');
-  if (!filterEl) return;
+  if (!filterEl) {
+    console.error('[DEBUG] 找不到 filter element:', key);
+    return;
+  }
 
   // 父 filter 文本始终保持为原始名称
   button.textContent = baseLabel;
@@ -712,6 +843,224 @@ function updateFilterUIForKey(key) {
       opt.classList.remove('selected');
     }
   });
+
+  // ========== Step 1: 打印对应的 Google Places API types ==========
+  const selectedTypes = getSelectedPlacesTypes();
+  
+  if (selectedTypes.length > 0) {
+    console.log('=== Filter 选中状态 ===');
+    console.log('Filter:', key);
+    console.log('UI 名称:', baseLabel);
+    console.log('父类别选中:', parentSelected);
+    console.log('选中的子类别:', Array.from(selectedChildren));
+    console.log('对应的 Google Places API types:', selectedTypes);
+    console.log('========================');
+    
+    // ========== Step 2: 测试 nearbySearch 调用 ==========
+    // 目的：确认 API key 正确，Places API 返回数据正常
+    if (typeof map !== 'undefined' && map && placesService) {
+      console.log('[Step 2] 开始测试 nearbySearch...');
+      
+      // 获取地图的 bounds（视口范围）
+      const bounds = map.getBounds();
+      if (!bounds) {
+        console.warn('[Step 2] 地图 bounds 不可用，使用中心点和半径');
+        const center = map.getCenter();
+        if (center) {
+          testNearbySearchWithLocation(selectedTypes[0], center, 2000); // 使用第一个 type，半径 2000 米
+        } else {
+          console.error('[Step 2] 地图中心点不可用');
+        }
+      } else {
+        // 使用 bounds 进行搜索
+        testNearbySearchWithBounds(selectedTypes[0], bounds); // 使用第一个 type 进行测试
+      }
+    } else {
+      console.warn('[Step 2] map 或 placesService 未初始化，跳过 nearbySearch 测试');
+      console.log('[Step 2] map:', typeof map !== 'undefined' ? '存在' : '不存在');
+      console.log('[Step 2] placesService:', placesService ? '存在' : '不存在');
+    }
+  } else {
+    console.log('Filter 已取消选中:', key);
+    // ========== 清除该 filter 的 markers ==========
+    console.log('[Step 3] Filter 已取消选中，清除 markers');
+    clearFilterMarkers();
+  }
+}
+
+/**
+ * Step 2: 使用 bounds 测试 nearbySearch
+ */
+function testNearbySearchWithBounds(type, bounds) {
+  console.log('[Step 2] 使用 bounds 调用 nearbySearch');
+  console.log('[Step 2] Type:', type);
+  console.log('[Step 2] Bounds:', {
+    north: bounds.getNorthEast().lat(),
+    south: bounds.getSouthWest().lat(),
+    east: bounds.getNorthEast().lng(),
+    west: bounds.getSouthWest().lng()
+  });
+  
+  const request = {
+    bounds: bounds,
+    type: type,
+    rankBy: google.maps.places.RankBy.PROMINENCE
+  };
+  
+  placesService.nearbySearch(request, (results, status) => {
+    console.log('=== [Step 2] nearbySearch 结果 ===');
+    console.log('Status:', status);
+    console.log('Status 说明:', getStatusDescription(status));
+    console.log('返回结果数量:', results ? results.length : 0);
+    
+    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+      console.log('前 3 个结果预览:');
+      results.slice(0, 3).forEach((place, index) => {
+        console.log(`  [${index + 1}] ${place.name} - ${place.vicinity || place.formatted_address || 'N/A'}`);
+      });
+      console.log('所有结果的 place_id:', results.map(p => p.place_id));
+      
+      // ========== Step 3: 创建 markers ==========
+      console.log('[Step 3] 开始创建 markers...');
+      clearFilterMarkers(); // 清除旧的 markers
+      createMarkersForPlaces(results); // 创建新的 markers
+      console.log(`[Step 3] 已创建 ${results.length} 个 markers`);
+    } else {
+      console.warn('搜索失败或无结果');
+      if (results) {
+        console.log('Results:', results);
+      }
+    }
+    console.log('================================');
+  });
+}
+
+/**
+ * Step 2: 使用 location + radius 测试 nearbySearch
+ */
+function testNearbySearchWithLocation(type, location, radius) {
+  console.log('[Step 2] 使用 location + radius 调用 nearbySearch');
+  console.log('[Step 2] Type:', type);
+  console.log('[Step 2] Location:', {
+    lat: location.lat(),
+    lng: location.lng()
+  });
+  console.log('[Step 2] Radius:', radius, 'meters');
+  
+  const request = {
+    location: location,
+    radius: radius,
+    type: type,
+    rankBy: google.maps.places.RankBy.PROMINENCE
+  };
+  
+  placesService.nearbySearch(request, (results, status) => {
+    console.log('=== [Step 2] nearbySearch 结果 ===');
+    console.log('Status:', status);
+    console.log('Status 说明:', getStatusDescription(status));
+    console.log('返回结果数量:', results ? results.length : 0);
+    
+    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+      console.log('前 3 个结果预览:');
+      results.slice(0, 3).forEach((place, index) => {
+        console.log(`  [${index + 1}] ${place.name} - ${place.vicinity || place.formatted_address || 'N/A'}`);
+      });
+      console.log('所有结果的 place_id:', results.map(p => p.place_id));
+      
+      // ========== Step 3: 创建 markers ==========
+      console.log('[Step 3] 开始创建 markers...');
+      clearFilterMarkers(); // 清除旧的 markers
+      createMarkersForPlaces(results); // 创建新的 markers
+      console.log(`[Step 3] 已创建 ${results.length} 个 markers`);
+    } else {
+      console.warn('搜索失败或无结果');
+      if (results) {
+        console.log('Results:', results);
+      }
+    }
+    console.log('================================');
+  });
+}
+
+/**
+ * 获取 PlacesServiceStatus 的说明
+ */
+function getStatusDescription(status) {
+  const statusMap = {
+    'OK': '请求成功',
+    'ZERO_RESULTS': '未找到结果',
+    'OVER_QUERY_LIMIT': '超过查询限制',
+    'REQUEST_DENIED': '请求被拒绝（可能是 API key 问题）',
+    'INVALID_REQUEST': '请求无效',
+    'UNKNOWN_ERROR': '未知错误'
+  };
+  return statusMap[status] || status;
+}
+
+/**
+ * Step 3: 清除所有 filter markers
+ */
+function clearFilterMarkers() {
+  console.log('[Step 3] 清除旧的 markers，当前数量:', filterMarkers.length);
+  filterMarkers.forEach(marker => {
+    marker.setMap(null);
+  });
+  filterMarkers = [];
+  console.log('[Step 3] 已清除所有 markers');
+}
+
+/**
+ * Step 3: 为每个 place 创建 marker
+ * @param {Array} places - nearbySearch 返回的 places 数组
+ */
+function createMarkersForPlaces(places) {
+  if (!places || !Array.isArray(places) || places.length === 0) {
+    console.warn('[Step 3] 没有 places 数据，无法创建 markers');
+    return;
+  }
+
+  if (typeof map === 'undefined' || !map) {
+    console.error('[Step 3] map 未初始化，无法创建 markers');
+    return;
+  }
+
+  console.log(`[Step 3] 开始为 ${places.length} 个 places 创建 markers...`);
+
+  places.forEach((place, index) => {
+    if (!place.geometry || !place.geometry.location) {
+      console.warn(`[Step 3] Place ${index} 缺少位置信息:`, place.name);
+      return;
+    }
+
+    // 创建 marker
+    const marker = new google.maps.Marker({
+      map: map,
+      position: place.geometry.location,
+      title: place.name || 'Unknown Place'
+    });
+
+    // 添加点击事件：显示 place name
+    marker.addListener('click', () => {
+      console.log('[Step 3] Marker 被点击:', place.name);
+      
+      // 创建 InfoWindow 显示 place name
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="padding: 8px;">
+            <strong>${place.name || 'Unknown Place'}</strong>
+            ${place.vicinity ? `<br><small>${place.vicinity}</small>` : ''}
+          </div>
+        `
+      });
+      
+      infoWindow.open(map, marker);
+    });
+
+    // 保存到数组
+    filterMarkers.push(marker);
+  });
+
+  console.log(`[Step 3] 成功创建 ${filterMarkers.length} 个 markers`);
 }
 
 function loadSearchHistory() {
