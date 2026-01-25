@@ -883,7 +883,7 @@ function updateFilterUIForKey(key) {
   } else {
     console.log('Filter 已取消选中:', key);
     // ========== 清除该 filter 的 markers ==========
-    console.log('[Step 3] Filter 已取消选中，清除 markers');
+    console.log('[Step 3] 清除该 filter 的 markers');
     clearFilterMarkers();
   }
 }
@@ -1036,7 +1036,7 @@ function createMarkersForPlaces(places) {
     const marker = new google.maps.Marker({
       map: map,
       position: place.geometry.location,
-      title: place.name || 'Unknown Place'
+      title: place.name || 'Unknown Place',
     });
 
     // 添加点击事件：显示 place name
