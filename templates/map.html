@@ -185,54 +185,57 @@ function initMap(){
   map=new google.maps.Map(document.getElementById("map"),{
     zoom:12,
     center:dublin,
-    clickableIcons:false
+    clickableIcons:true // 允许点击 POI 以获取 placeId
   });
   new google.maps.Marker({position:dublin,map,title:"Dublin"});
 
   geocoder = new google.maps.Geocoder();
 
-  // 允许用户点击地图任意位置来放置 / 更新标记，并在左侧显示地点详情
-  map.addListener('click',(e)=>{
-    const position = e.latLng;
+  // 地图点击事件：只处理 Google Maps 原生 POI 点击
+  map.addListener('click', (e) => {
+    // 移除旧的临时 marker
     if (searchMarker) {
       searchMarker.setMap(null);
+      searchMarker = null;
     }
-    searchMarker = new google.maps.Marker({
-      map,
-      position
-    });
 
-    if (!geocoder || !placesService) {
+    // 只处理有 placeId 的点击（Google Maps 原生 POI）
+    if (!e.placeId) {
+      // 未命中 POI，不显示任何信息
       return;
     }
 
-    geocoder.geocode({ location: position }, (results, status) => {
-      const detailsEl = document.getElementById('place-details');
+    if (!placesService) {
+      return;
+    }
 
-      if (status !== 'OK' || !results || !results.length) {
-        if (detailsEl) {
-          detailsEl.innerHTML = '<div class="place-placeholder">No place details found for this location.</div>';
-        }
+    // 使用 click event 提供的 placeId 调用 getDetails
+    const request = {
+      placeId: e.placeId,
+      fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'user_ratings_total', 'place_id', 'geometry']
+    };
+
+    placesService.getDetails(request, (place, status) => {
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
         return;
       }
 
-      const result = results[0];
+      // 创建临时 marker
+      if (place.geometry && place.geometry.location) {
+        searchMarker = new google.maps.Marker({
+          map,
+          position: place.geometry.location,
+          title: place.name || 'Unknown Place'
+        });
 
-      if (result.place_id) {
-        const description =
-          result.formatted_address ||
-          (result.address_components && result.address_components.map(c => c.long_name).join(', ')) ||
-          'Selected location';
-        // 复用已有的详情渲染逻辑
-        handlePlaceSelected(result.place_id, description);
-      } else if (detailsEl) {
-        const address = result.formatted_address || 'Selected location';
-        detailsEl.innerHTML = `
-          <div class="place-details-card">
-            <div class="place-title">${address}</div>
-            <div class="place-address">${address}</div>
-          </div>
-        `;
+        // 根据是否有 photos / rating 决定显示方式
+        if (place.photos && place.photos.length > 0) {
+          // 有 photos：显示完整信息卡片
+          handlePlaceSelected(place.place_id, place.name || 'Unknown Place', true);
+        } else {
+          // 没有 photos：显示轻量 InfoWindow
+          showLightweightInfoWindow(place, searchMarker);
+        }
       }
     });
   });
