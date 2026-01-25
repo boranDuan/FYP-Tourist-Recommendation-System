@@ -181,7 +181,6 @@ function loadGoogleMapScript(apiKey){
 
 
 function initMap(){
-  console.log('[DEBUG] initMap 开始执行');
   const dublin={lat:53.3498,lng:-6.2603};
   map=new google.maps.Map(document.getElementById("map"),{
     zoom:12,
@@ -191,7 +190,6 @@ function initMap(){
   new google.maps.Marker({position:dublin,map,title:"Dublin"});
 
   geocoder = new google.maps.Geocoder();
-  console.log('[DEBUG] 地图初始化完成，准备初始化搜索功能');
 
   // 允许用户点击地图任意位置来放置 / 更新标记，并在左侧显示地点详情
   map.addListener('click',(e)=>{
@@ -327,14 +325,20 @@ function initMap(){
   updateOptionsVisibility();
 
   // 初始化搜索功能
-  console.log('[DEBUG] 准备调用 initSearch()');
   if (typeof initSearch === 'function') {
     initSearch();
-    console.log('[DEBUG] initSearch() 调用完成');
-  } else {
-    console.error('[DEBUG] initSearch 函数不存在！');
   }
-  console.log('[DEBUG] initMap 执行完成');
+
+  // 添加地图事件监听器（动态加载 markers）
+  if (typeof handleBoundsChange === 'function' && typeof debounce === 'function') {
+    const debounceDelay = typeof BOUNDS_CHANGE_DEBOUNCE_MS !== 'undefined' ? BOUNDS_CHANGE_DEBOUNCE_MS : 400;
+    const debouncedHandleBoundsChange = debounce(handleBoundsChange, debounceDelay);
+    
+    // 监听地图 idle 事件（地图停止移动/缩放后触发）
+    map.addListener('idle', () => {
+      debouncedHandleBoundsChange();
+    });
+  }
 }
 
 
