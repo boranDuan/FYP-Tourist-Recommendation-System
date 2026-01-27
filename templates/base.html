@@ -666,6 +666,8 @@
                 if (data.success && data.user) {
                     currentUser = data.user;
                     updateLoginUI(true);
+                    // 登录后同步 localStorage 收藏到数据库
+                    syncGuestFavoritesToDB();
                 } else {
                     currentUser = null;
                     updateLoginUI(false);
@@ -674,6 +676,45 @@
                 console.error('Failed to check user status:', error);
                 currentUser = null;
                 updateLoginUI(false);
+            }
+        }
+        
+        // 同步游客收藏到数据库
+        async function syncGuestFavoritesToDB() {
+            try {
+                const guestFavorites = JSON.parse(localStorage.getItem('trs_guest_favorites') || '[]');
+                if (!Array.isArray(guestFavorites) || guestFavorites.length === 0) {
+                    return; // 没有游客收藏，不需要同步
+                }
+                
+                console.log('Syncing guest favorites to database:', guestFavorites.length);
+                
+                const response = await fetch('/api/favorites/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        favorites: guestFavorites
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    console.log(`Synced ${data.synced} favorites to database`);
+                    // 清空 localStorage
+                    localStorage.removeItem('trs_guest_favorites');
+                    // 如果收藏面板正在显示，重新加载
+                    if (document.body.classList.contains('show-favorites')) {
+                        if (typeof loadFavorites === 'function') {
+                            loadFavorites();
+                        }
+                    }
+                } else {
+                    console.error('Failed to sync favorites:', data.message);
+                }
+            } catch (error) {
+                console.error('Error syncing guest favorites:', error);
             }
         }
         
@@ -746,6 +787,10 @@
                             if (favoritesContainer) {
                                 favoritesContainer.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
                             }
+                        }
+                        // 重新检查当前显示的地点详情卡片的收藏状态（从localStorage检查）
+                        if (typeof refreshFavoriteButtonStatus === 'function') {
+                            refreshFavoriteButtonStatus();
                         }
                     } else {
                         alert('Logout failed: ' + data.message);
@@ -848,6 +893,8 @@
                     closeLoginModalFunc();
                     currentUser = data.user;
                     updateLoginUI(true);
+                    // 同步游客收藏到数据库
+                    syncGuestFavoritesToDB();
                     // UI 已更新，不需要刷新页面
                 } else {
                     showError('loginError', data.message || 'Login failed');
@@ -899,6 +946,8 @@
                     closeRegisterModalFunc();
                     currentUser = data.user;
                     updateLoginUI(true);
+                    // 同步游客收藏到数据库
+                    syncGuestFavoritesToDB();
                     // UI 已更新，不需要刷新页面
                 } else {
                     showError('registerError', data.message || 'Registration failed');

@@ -99,6 +99,7 @@ let autocompleteService = null;
 let searchMarker = null;
 let searchHistory = [];
 const SEARCH_HISTORY_KEY = 'trs_search_history';
+const GUEST_FAVORITES_KEY = 'trs_guest_favorites'; // 游客收藏 localStorage key
 let autocompleteTimer = null;
 let filterState = {};
 // Step 3: Filter markers 管理
@@ -1005,30 +1006,132 @@ function renderPlaceDetails(container, place, placeIdParam = null) {
 }
 
 /**
- * 检查地点是否已收藏
+ * 检查用户是否登录
+ */
+async function checkUserLoggedIn() {
+  try {
+    const response = await fetch('/api/user');
+    const data = await response.json();
+    return data.success && data.user !== null;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * 从 localStorage 获取游客收藏
+ */
+function getGuestFavorites() {
+  try {
+    const raw = localStorage.getItem(GUEST_FAVORITES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * 保存到 localStorage（游客模式）
+ */
+function saveGuestFavorite(favorite) {
+  const favorites = getGuestFavorites();
+  // 检查是否已存在
+  if (!favorites.find(f => f.place_id === favorite.place_id)) {
+    favorites.push(favorite);
+    localStorage.setItem(GUEST_FAVORITES_KEY, JSON.stringify(favorites));
+  }
+}
+
+/**
+ * 从 localStorage 删除收藏（游客模式）
+ */
+function removeGuestFavorite(placeId) {
+  const favorites = getGuestFavorites();
+  const filtered = favorites.filter(f => f.place_id !== placeId);
+  localStorage.setItem(GUEST_FAVORITES_KEY, JSON.stringify(filtered));
+}
+
+/**
+ * 检查地点是否已收藏（支持游客和登录用户）
  */
 async function checkFavoriteStatus(placeId, checkboxId) {
   if (!placeId || placeId === 'default') {
     return;
   }
   
-  try {
-    const response = await fetch(`/api/favorites/check/${placeId}`);
-    const data = await response.json();
-    
-    if (data.success && data.is_favorited) {
+  const isLoggedIn = await checkUserLoggedIn();
+  
+  if (isLoggedIn) {
+    // 登录用户：从数据库检查
+    try {
+      const response = await fetch(`/api/favorites/check/${placeId}`);
+      const data = await response.json();
+      
+      if (data.success && data.is_favorited) {
+        const checkbox = document.getElementById(checkboxId);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+      } else {
+        // 如果数据库中没有，确保checkbox是未选中状态
+        const checkbox = document.getElementById(checkboxId);
+        if (checkbox) {
+          checkbox.checked = false;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check favorite status:', error);
+      // 出错时，确保checkbox是未选中状态
       const checkbox = document.getElementById(checkboxId);
       if (checkbox) {
-        checkbox.checked = true;
+        checkbox.checked = false;
       }
     }
-  } catch (error) {
-    console.error('Failed to check favorite status:', error);
+  } else {
+    // 游客：从 localStorage 检查
+    const favorites = getGuestFavorites();
+    const isFavorited = favorites.some(f => f.place_id === placeId);
+    const checkbox = document.getElementById(checkboxId);
+    if (checkbox) {
+      checkbox.checked = isFavorited;
+    }
   }
 }
 
 /**
- * 处理收藏按钮切换
+ * 刷新当前显示的地点详情卡片的收藏按钮状态
+ * 用于logout后重新检查收藏状态
+ */
+function refreshFavoriteButtonStatus() {
+  // 查找当前显示的收藏按钮
+  const placeDetailsCard = document.querySelector('.place-details-card');
+  if (!placeDetailsCard) {
+    return; // 没有显示的地点详情卡片
+  }
+  
+  // 查找收藏按钮的checkbox
+  const favoriteCheckbox = placeDetailsCard.querySelector('input[type="checkbox"][id^="place-favorite-"]');
+  if (!favoriteCheckbox) {
+    return; // 没有找到收藏按钮
+  }
+  
+  // 从checkbox的id中提取place_id
+  const checkboxId = favoriteCheckbox.id;
+  const placeIdMatch = checkboxId.match(/place-favorite-(.+)/);
+  if (!placeIdMatch || !placeIdMatch[1]) {
+    return;
+  }
+  
+  const placeId = placeIdMatch[1];
+  
+  // 重新检查收藏状态（现在是游客状态，会从localStorage检查）
+  checkFavoriteStatus(placeId, checkboxId);
+}
+
+/**
+ * 处理收藏按钮切换（支持游客和登录用户）
  */
 async function handleFavoriteToggle(isChecked, placeId, place) {
   console.log('handleFavoriteToggle called:', { isChecked, placeId, placeName: place?.name });
@@ -1039,78 +1142,104 @@ async function handleFavoriteToggle(isChecked, placeId, place) {
     return;
   }
   
+  const isLoggedIn = await checkUserLoggedIn();
+  
+  // 准备收藏数据
+  const favoriteData = {
+    place_id: placeId,
+    place_name: place.name || 'Unknown Place',
+    place_data: {
+      // 只存储需要的数据：name, rating, types, photos
+      name: place.name,
+      rating: place.rating,
+      types: place.types,
+      photos: place.photos ? place.photos.map(p => {
+        // 提取 photo_reference
+        if (typeof p.getUrl === 'function') {
+          // Google Places Photo 对象
+          return { photo_reference: p.photo_reference || null };
+        } else if (p.photo_reference) {
+          return { photo_reference: p.photo_reference };
+        }
+        return null;
+      }).filter(p => p && p.photo_reference) : [],
+      geometry: place.geometry ? {
+        location: {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng()
+        }
+      } : null
+    }
+  };
+  
   try {
     if (isChecked) {
       // 添加收藏
-      console.log('Adding favorite:', { place_id: placeId, place_name: place.name });
-      const response = await fetch('/api/favorites', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          place_id: placeId,
-          place_name: place.name || 'Unknown Place',
-          place_data: {
-            // 只存储需要的数据：name, rating, types, photos
-            name: place.name,
-            rating: place.rating,
-            types: place.types,
-            photos: place.photos ? place.photos.map(p => ({
-              photo_reference: p.photo_reference || (typeof p.getUrl === 'function' ? null : p)
-            })).filter(p => p.photo_reference) : [],
-            geometry: place.geometry ? {
-              location: {
-                lat: place.geometry.location.lat(),
-                lng: place.geometry.location.lng()
-              }
-            } : null
+      if (isLoggedIn) {
+        // 登录用户：保存到数据库
+        console.log('Adding favorite to database:', { place_id: placeId, place_name: place.name });
+        const response = await fetch('/api/favorites', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(favoriteData)
+        });
+        
+        const data = await response.json();
+        console.log('Add favorite response:', data);
+        
+        if (!data.success) {
+          const checkbox = document.getElementById(`place-favorite-${placeId}`);
+          if (checkbox) {
+            checkbox.checked = false;
           }
-        })
-      });
-      
-      const data = await response.json();
-      console.log('Add favorite response:', data);
-      
-      if (!data.success) {
-        // 如果失败，恢复 checkbox 状态
-        const checkbox = document.getElementById(`place-favorite-${placeId}`);
-        if (checkbox) {
-          checkbox.checked = false;
-        }
-        if (data.message === 'Please login first') {
-          alert('Please login to add favorites');
+          if (data.message === 'Please login first') {
+            alert('Please login to add favorites');
+          } else {
+            console.error('Failed to add favorite:', data.message);
+            alert('Failed to add favorite: ' + data.message);
+          }
         } else {
-          console.error('Failed to add favorite:', data.message);
-          alert('Failed to add favorite: ' + data.message);
+          console.log('Favorite added successfully!');
         }
       } else {
-        console.log('Favorite added successfully!');
+        // 游客：保存到 localStorage
+        console.log('Adding favorite to localStorage:', { place_id: placeId, place_name: place.name });
+        saveGuestFavorite(favoriteData);
+        console.log('Favorite saved to localStorage!');
       }
     } else {
       // 取消收藏
-      console.log('Removing favorite:', placeId);
-      const response = await fetch(`/api/favorites/${placeId}`, {
-        method: 'DELETE'
-      });
-      
-      const data = await response.json();
-      console.log('Remove favorite response:', data);
-      
-      if (!data.success) {
-        // 如果失败，恢复 checkbox 状态
-        const checkbox = document.getElementById(`place-favorite-${placeId}`);
-        if (checkbox) {
-          checkbox.checked = true;
-        }
-        if (data.message === 'Please login first') {
-          alert('Please login to manage favorites');
+      if (isLoggedIn) {
+        // 登录用户：从数据库删除
+        console.log('Removing favorite from database:', placeId);
+        const response = await fetch(`/api/favorites/${placeId}`, {
+          method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        console.log('Remove favorite response:', data);
+        
+        if (!data.success) {
+          const checkbox = document.getElementById(`place-favorite-${placeId}`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+          if (data.message === 'Please login first') {
+            alert('Please login to manage favorites');
+          } else {
+            console.error('Failed to remove favorite:', data.message);
+            alert('Failed to remove favorite: ' + data.message);
+          }
         } else {
-          console.error('Failed to remove favorite:', data.message);
-          alert('Failed to remove favorite: ' + data.message);
+          console.log('Favorite removed successfully!');
         }
       } else {
-        console.log('Favorite removed successfully!');
+        // 游客：从 localStorage 删除
+        console.log('Removing favorite from localStorage:', placeId);
+        removeGuestFavorite(placeId);
+        console.log('Favorite removed from localStorage!');
       }
     }
   } catch (error) {

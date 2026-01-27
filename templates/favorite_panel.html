@@ -17,7 +17,34 @@
 let favoritesData = [];
 
 /**
- * 加载收藏列表
+ * 检查用户是否登录
+ */
+async function checkUserLoggedIn() {
+  try {
+    const response = await fetch('/api/user');
+    const data = await response.json();
+    return data.success && data.user !== null;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * 从 localStorage 获取游客收藏
+ */
+function getGuestFavorites() {
+  try {
+    const raw = localStorage.getItem('trs_guest_favorites');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * 加载收藏列表（支持游客和登录用户）
  */
 async function loadFavorites() {
   const container = document.getElementById('favorites-container');
@@ -26,19 +53,34 @@ async function loadFavorites() {
   try {
     container.innerHTML = '<div class="favorites-loading">Loading favorites...</div>';
     
-    const response = await fetch('/api/favorites');
-    const data = await response.json();
+    const isLoggedIn = await checkUserLoggedIn();
     
-    if (!data.success) {
-      if (data.message === 'Please login first') {
-        container.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
-      } else {
-        container.innerHTML = '<div class="favorites-empty">Failed to load favorites</div>';
+    if (isLoggedIn) {
+      // 登录用户：从数据库加载
+      const response = await fetch('/api/favorites');
+      const data = await response.json();
+      
+      if (!data.success) {
+        if (data.message === 'Please login first') {
+          container.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
+        } else {
+          container.innerHTML = '<div class="favorites-empty">Failed to load favorites</div>';
+        }
+        return;
       }
-      return;
+      
+      favoritesData = data.favorites || [];
+    } else {
+      // 游客：从 localStorage 加载
+      const guestFavorites = getGuestFavorites();
+      // 转换为与数据库格式一致的结构
+      favoritesData = guestFavorites.map((fav, index) => ({
+        id: `guest_${index}`, // 临时 ID
+        place_id: fav.place_id,
+        place_name: fav.place_name,
+        place_data: fav.place_data
+      }));
     }
-    
-    favoritesData = data.favorites || [];
     
     if (favoritesData.length === 0) {
       container.innerHTML = '<div class="favorites-empty">No favorites yet. Start adding places you love!</div>';
@@ -72,9 +114,25 @@ function createFavoriteCard(favorite, index) {
   card.className = 'favorite-card';
   card.dataset.favoriteId = favorite.id;
   
-  // 解析 place_data
+  // 解析 place_data（兼容数据库格式和 localStorage 格式）
   const placeData = favorite.place_data || {};
-  const photos = placeData.photos || [];
+  
+  // 处理 photos：提取 photo_reference
+  let processedPhotos = [];
+  if (placeData.photos && Array.isArray(placeData.photos)) {
+    processedPhotos = placeData.photos.map(p => {
+      // 如果是对象且有 photo_reference
+      if (typeof p === 'object' && p.photo_reference) {
+        return p.photo_reference;
+      }
+      // 如果已经是字符串（photo_reference）
+      if (typeof p === 'string') {
+        return p;
+      }
+      return null;
+    }).filter(p => p !== null);
+  }
+  
   const name = favorite.place_name || placeData.name || 'Unknown Place';
   const rating = placeData.rating || null;
   const types = placeData.types || [];
@@ -83,22 +141,6 @@ function createFavoriteCard(favorite, index) {
   const typeText = types.length > 0 
     ? types[0].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     : '';
-  
-  // 处理 photos 数据（可能是对象数组或字符串数组）
-  let processedPhotos = [];
-  if (Array.isArray(photos) && photos.length > 0) {
-    processedPhotos = photos.map(photo => {
-      // 如果 photo 是对象且有 photo_reference
-      if (typeof photo === 'object' && photo.photo_reference) {
-        return photo.photo_reference;
-      }
-      // 如果 photo 是字符串（URL 或 photo_reference）
-      if (typeof photo === 'string') {
-        return photo;
-      }
-      return null;
-    }).filter(p => p !== null);
-  }
   
   // 图片部分
   let imageHtml = '';
@@ -174,7 +216,7 @@ function createFavoriteCard(favorite, index) {
   `;
   
   // 添加点击事件：点击卡片可以在地图上显示该地点
-  card.addEventListener('click', () => {
+  card.addEventListener('click', async () => {
     // 先展开搜索面板（显示地点详情）
     if (!document.body.classList.contains('collapsed')) {
       document.body.classList.add('collapsed');
@@ -186,9 +228,17 @@ function createFavoriteCard(favorite, index) {
     // 关闭收藏面板
     document.body.classList.remove('show-favorites');
     
-    // 调用 handlePlaceSelected 显示地点详情
-    if (typeof handlePlaceSelected === 'function') {
-      handlePlaceSelected(favorite.place_id, name, true);
+    // 如果有 place_data 中的完整数据，可以直接使用
+    if (placeData.geometry && placeData.geometry.location) {
+      // 重新获取详情以显示完整信息
+      if (typeof handlePlaceSelected === 'function') {
+        handlePlaceSelected(favorite.place_id, name, true);
+      }
+    } else {
+      // 否则需要重新获取详情
+      if (typeof handlePlaceSelected === 'function') {
+        handlePlaceSelected(favorite.place_id, name, true);
+      }
     }
   });
   

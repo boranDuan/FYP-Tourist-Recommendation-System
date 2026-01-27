@@ -225,6 +225,61 @@ def check_favorite(place_id):
     except Exception as e:
         return jsonify({'success': False, 'message': 'Failed to check favorite: ' + str(e)}), 500
 
+@app.route("/api/favorites/sync", methods=["POST"])
+def sync_favorites():
+    """批量同步收藏（从 localStorage 到数据库）"""
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Please login first'}), 401
+    
+    data = request.get_json()
+    favorites = data.get('favorites', [])  # localStorage 中的收藏数组
+    
+    if not favorites or not isinstance(favorites, list):
+        return jsonify({'success': True, 'message': 'No favorites to sync', 'synced': 0}), 200
+    
+    user_id = session['user_id']
+    synced_count = 0
+    skipped_count = 0
+    
+    try:
+        for fav in favorites:
+            place_id = fav.get('place_id', '').strip()
+            place_name = fav.get('place_name', '').strip()
+            place_data = fav.get('place_data')
+            
+            if not place_id or not place_name:
+                continue
+            
+            # 检查是否已存在
+            existing = Favorite.query.filter_by(user_id=user_id, place_id=place_id).first()
+            if existing:
+                skipped_count += 1
+                continue
+            
+            # 创建新收藏
+            favorite = Favorite(
+                user_id=user_id,
+                place_id=place_id,
+                place_name=place_name,
+                place_data=place_data,
+                created_at=datetime.now()
+            )
+            db.session.add(favorite)
+            synced_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Synced {synced_count} favorites',
+            'synced': synced_count,
+            'skipped': skipped_count
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Failed to sync favorites: ' + str(e)}), 500
+
 if __name__ == "__main__":
     url = "http://127.0.0.1:5000/map"
     print(f"Server running at {url}")
