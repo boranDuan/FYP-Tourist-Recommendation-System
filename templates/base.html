@@ -187,6 +187,68 @@
       .modal-overlay.active {
         display: flex;
       }
+      
+      /* 用户卡片样式 */
+      .user-card-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 2000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .user-card {
+        background: white;
+        border-radius: 12px;
+        padding: 0;
+        width: 300px;
+        min-width: 300px;
+        max-width: 90vw;
+        position: relative;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+      
+      .user-card-header {
+        padding: 24px 24px 16px;
+        border-bottom: 1px solid #eee;
+      }
+      
+      .user-card-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #333;
+      }
+      
+      .user-card-menu {
+        padding: 8px 0;
+      }
+      
+      .user-card-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 24px;
+        cursor: pointer;
+        transition: background 0.2s;
+        font-size: 15px;
+        color: #333;
+      }
+      
+      .user-card-item:hover {
+        background: #f5f5f5;
+      }
+      
+      .user-card-item .material-symbols-outlined {
+        font-size: 20px;
+        color: #666;
+      }
+      
       .modal {
         background: white;
         border-radius: 12px;
@@ -593,11 +655,135 @@
             }
         }
         
-        // 点击 Login 按钮打开登录窗口
-        loginItem.addEventListener('click', (e) => {
+        // 用户状态管理
+        let currentUser = null;
+        
+        // 检查用户登录状态
+        async function checkUserStatus() {
+            try {
+                const response = await fetch('/api/user');
+                const data = await response.json();
+                if (data.success && data.user) {
+                    currentUser = data.user;
+                    updateLoginUI(true);
+                } else {
+                    currentUser = null;
+                    updateLoginUI(false);
+                }
+            } catch (error) {
+                console.error('Failed to check user status:', error);
+                currentUser = null;
+                updateLoginUI(false);
+            }
+        }
+        
+        // 更新登录 UI
+        function updateLoginUI(isLoggedIn) {
+            if (isLoggedIn && currentUser) {
+                // 已登录：更新 login item 显示
+                const loginLabel = loginItem.querySelector('.label');
+                if (loginLabel) {
+                    loginLabel.textContent = currentUser.username;
+                }
+            } else {
+                // 未登录：恢复显示 "Login"
+                const loginLabel = loginItem.querySelector('.label');
+                if (loginLabel) {
+                    loginLabel.textContent = 'Login';
+                }
+            }
+        }
+        
+        // 显示用户卡片
+        function showUserCard() {
+            if (!currentUser) return;
+            
+            // 创建用户卡片
+            const card = document.createElement('div');
+            card.className = 'user-card-overlay';
+            card.innerHTML = `
+                <div class="user-card">
+                    <div class="user-card-header">
+                        <h3>Hi, ${currentUser.username}</h3>
+                    </div>
+                    <div class="user-card-menu">
+                        <div class="user-card-item" id="userProfileBtn">
+                            <span class="material-symbols-outlined">person</span>
+                            <span>My profile</span>
+                        </div>
+                        <div class="user-card-item" id="userLogoutBtn">
+                            <span class="material-symbols-outlined">logout</span>
+                            <span>Logout</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 点击遮罩层关闭
+            card.addEventListener('click', (e) => {
+                if (e.target === card) {
+                    card.remove();
+                }
+            });
+            
+            // Logout 按钮
+            const logoutBtn = card.querySelector('#userLogoutBtn');
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    const response = await fetch('/api/logout', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        currentUser = null;
+                        updateLoginUI(false);
+                        card.remove();
+                        // 更新为游客状态，不需要刷新页面
+                        // 可以在这里清除收藏面板等需要登录的功能
+                        if (typeof loadFavorites === 'function') {
+                            // 如果收藏面板正在显示，清空它
+                            const favoritesContainer = document.getElementById('favorites-container');
+                            if (favoritesContainer) {
+                                favoritesContainer.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
+                            }
+                        }
+                    } else {
+                        alert('Logout failed: ' + data.message);
+                    }
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    alert('Logout failed. Please try again.');
+                }
+            });
+            
+            // My profile 按钮（暂时不做任何事）
+            const profileBtn = card.querySelector('#userProfileBtn');
+            profileBtn.addEventListener('click', () => {
+                // TODO: 实现 My profile 功能
+                card.remove();
+            });
+            
+            document.body.appendChild(card);
+        }
+        
+        // 点击 Login 按钮：根据登录状态显示不同内容
+        loginItem.addEventListener('click', async (e) => {
             e.stopPropagation();
-            openLoginModal();
+            
+            // 先检查当前登录状态
+            await checkUserStatus();
+            
+            if (currentUser) {
+                // 已登录：显示用户卡片
+                showUserCard();
+            } else {
+                // 未登录：显示登录窗口
+                openLoginModal();
+            }
         });
+        
+        // 页面加载时检查登录状态
+        checkUserStatus();
         
         // 关闭按钮
         closeLoginModal.addEventListener('click', closeLoginModalFunc);
@@ -660,9 +846,9 @@
                 
                 if (data.success) {
                     closeLoginModalFunc();
-                    alert('Login successful! Welcome, ' + data.user.username);
-                    // 可以在这里更新 UI，比如显示用户名
-                    location.reload(); // 刷新页面以更新状态
+                    currentUser = data.user;
+                    updateLoginUI(true);
+                    // UI 已更新，不需要刷新页面
                 } else {
                     showError('loginError', data.message || 'Login failed');
                     submitBtn.disabled = false;
@@ -711,8 +897,9 @@
                 
                 if (data.success) {
                     closeRegisterModalFunc();
-                    alert('Registration successful! Welcome, ' + data.user.username);
-                    location.reload(); // 刷新页面以更新状态
+                    currentUser = data.user;
+                    updateLoginUI(true);
+                    // UI 已更新，不需要刷新页面
                 } else {
                     showError('registerError', data.message || 'Registration failed');
                     submitBtn.disabled = false;
