@@ -1,0 +1,410 @@
+/* 左侧搜索面板，占用折叠后地图左侧的 50% 区域 */
+#search-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100vh;
+  background: #ffffff;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  padding: 20px 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.6s ease, opacity 0.3s ease;
+  z-index: 900;
+}
+
+/* 折叠状态下显示搜索面板（地图已经缩到右侧 50%） */
+body.collapsed #search-panel {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#search-panel h2 {
+  margin: 0 0 4px; /* 减小与搜索框的距离 */
+  font-size: 24px; /* 增大字体 */
+}
+
+.search-section {
+  position: relative;
+  margin-top: 8px; /* 让搜索框整体向下挪一点 */
+}
+
+#search-panel .search-input {
+  width: 100%;
+  padding: 12px 40px 12px 16px; /* 上下加宽，右侧预留清空按钮空间 */
+  border-radius: 999px; /* 与 filter 一致的圆角风格 */
+  border: 1px solid #111; /* 与 filter 一样的外边缘粗细 */
+  font-size: 15px; /* 字体稍微变大 */
+  box-sizing: border-box;
+}
+
+#search-panel .search-input:focus {
+  outline: none;
+  border-color: #4a90e2;
+}
+
+#search-panel .search-hint {
+  font-size: 11px;
+  color: #666;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 0px; /* 往左移动 5px */
+  top: 3px; /* 往上移动 5px */
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  z-index: 10; /* 确保按钮在输入框上方 */
+}
+
+.search-clear-btn:hover {
+  color: #333;
+}
+
+.search-clear-btn svg {
+  width: 40px; /* 放大 X 符号 */
+  height: 40px;
+}
+
+/* 顶部 filters 栏 */
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 6px;      /* 调小与上方线的距离 */
+  margin-bottom: 4px;   /* 调小与下方线的距离 */
+  font-size: 13px;
+}
+
+.filter {
+  position: relative;
+}
+
+.filter-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #111;
+  background-color: #ffffff;
+  color: #111111;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.08);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.filter-btn::before {
+  content: "";
+  position: absolute;
+  left: -100%;
+  top: 0;
+  width: 140px;
+  height: 140px;
+  background-color: #111111;
+  border-radius: 50%;
+  transition: transform 0.3s ease, left 0.3s ease, border-radius 0.3s ease;
+  opacity: 0.1;
+}
+
+.filter-btn:hover::before {
+  transform: translate(100%, -50%);
+  border-radius: 0;
+}
+
+.filter-btn:hover {
+  background-color: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.filter-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 6px rgba(0,0,0,0.18);
+}
+
+.filter-btn.active {
+  color: #ffffff;
+  border-color: #111111;
+  background: #111111;
+}
+
+/* 当父 filter 悬浮区域（含子类别）打开时，父按钮保持黑底白字 */
+.filter.open .filter-btn {
+  background-color: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  padding: 6px 0;
+  z-index: 950;
+  display: none;
+}
+
+.filter.open .filter-dropdown {
+  display: block;
+}
+
+.filter-option {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.filter-option:hover {
+  background: #f5f5f5;
+  color: #111111;
+}
+
+.filter-option.selected {
+  color: #1a73e8;
+  font-weight: 500;
+}
+
+.filter-option.has-sub {
+  position: relative;
+}
+
+.filter-submenu {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 4px;
+  min-width: 160px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  padding: 6px 0;
+  display: none;
+}
+
+.filter-option.has-sub:hover .filter-submenu {
+  display: block;
+}
+
+.filters-divider {
+  height: 1px;
+  background: #eee;
+  margin: 2px 0 4px;    /* 整体再压缩一点上下间距 */
+}
+
+/* 自动补全和历史下拉 */
+#search-suggestions {
+  margin-top: 6px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.suggestion-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid #f1f1f1;
+  color: #555;
+}
+
+.clear-history-btn {
+  border: none;
+  background: none;
+  color: #4a90e2;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+}
+
+.clear-history-btn:hover {
+  text-decoration: underline;
+}
+
+.suggestion-item {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.suggestion-item:hover {
+  background: #f5f5f5;
+}
+
+.suggestion-secondary {
+  font-size: 12px;
+  color: #777;
+}
+
+.suggestion-empty {
+  padding: 10px;
+  font-size: 13px;
+  color: #999;
+}
+
+/* 详情区域 */
+#place-details {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.place-placeholder {
+  font-size: 13px;
+  color: #777;
+}
+
+.place-details-card {
+  border-radius: 10px;
+  border: 1px solid #eee;
+  padding: 12px 14px;
+  background: #fafafa;
+  font-size: 14px;
+}
+
+.place-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.place-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.place-rating {
+  font-weight: 600;
+}
+
+.place-types {
+  opacity: 0.8;
+}
+
+.place-address,
+.place-phone,
+.place-website {
+  margin-top: 4px;
+}
+
+.place-website a {
+  color: #4a90e2;
+  text-decoration: none;
+}
+
+.place-website a:hover {
+  text-decoration: underline;
+}
+
+.place-section {
+  margin-top: 10px;
+}
+
+.place-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.place-opening-hours {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  color: #555;
+}
+
+.place-opening-hours li {
+  margin: 2px 0;
+}
+
+.place-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.place-photo-grid img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.place-reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.place-review {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #eee;
+}
+
+.place-review-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.place-review-author {
+  font-size: 13px;
+}
+
+.place-review-rating {
+  font-size: 12px;
+  color: #f39c12;
+}
+
+.place-review-time {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.place-review-text {
+  font-size: 13px;
+  color: #555;
