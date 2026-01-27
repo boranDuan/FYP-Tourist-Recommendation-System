@@ -181,15 +181,39 @@ function loadGoogleMapScript(apiKey){
 
 
 function initMap(){
+  // 默认中心点（都柏林），如果无法获取用户位置则使用
   const dublin={lat:53.3498,lng:-6.2603};
   map=new google.maps.Map(document.getElementById("map"),{
     zoom:12,
     center:dublin,
     clickableIcons:true // 允许点击 POI 以获取 placeId
   });
-  new google.maps.Marker({position:dublin,map,title:"Dublin"});
+  // 初始状态不显示任何 marker
 
   geocoder = new google.maps.Geocoder();
+
+  // 自动定位到用户的当前地理位置
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        map.setCenter(userLocation);
+        map.setZoom(15); // 更近的缩放级别，类似 Google Maps
+      },
+      (error) => {
+        // 如果获取位置失败，保持默认中心点（都柏林）
+        console.warn('Geolocation error:', error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      }
+    );
+  }
 
   // 地图点击事件：只处理 Google Maps 原生 POI 点击
   map.addListener('click', (e) => {
