@@ -681,10 +681,23 @@ function initSearch() {
     });
   });
 
-  // 聚焦搜索框且为空时，展示历史
+  // 聚焦搜索框时：为空显示历史，有文字显示自动补全结果
   input.addEventListener('focus', () => {
-    if (!input.value.trim()) {
+    const value = input.value.trim();
+    if (!value) {
       renderHistory(suggestionsEl);
+    } else {
+      // 有文字时，显示自动补全结果
+      if (autocompleteService) {
+        const request = { input: value };
+        autocompleteService.getPlacePredictions(request, (predictions, status) => {
+          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+            renderSuggestions(suggestionsEl, predictions);
+          } else {
+            renderSuggestions(suggestionsEl, []);
+          }
+        });
+      }
     }
   });
 
@@ -1209,7 +1222,7 @@ function renderSuggestions(container, predictions) {
   });
 }
 
-function handlePlaceSelected(placeId, description) {
+function handlePlaceSelected(placeId, description, skipHistory = false) {
   const suggestionsEl = document.getElementById('search-suggestions');
   const detailsEl = document.getElementById('place-details');
   const input = document.getElementById('search-input');
@@ -1217,7 +1230,8 @@ function handlePlaceSelected(placeId, description) {
   if (suggestionsEl) {
     suggestionsEl.innerHTML = '';
   }
-  if (input) {
+  // 只有不是从地图点击时才更新搜索框
+  if (input && !skipHistory) {
     input.value = description;
   }
   if (!placesService) return;
@@ -1247,23 +1261,29 @@ function handlePlaceSelected(placeId, description) {
       return;
     }
 
-    addToSearchHistory({
-      placeId: place.place_id || placeId,
-      description: place.name || description
-    });
-
-    // 更新地图上的位置和 marker
-    if (place.geometry && place.geometry.location) {
-      map.setCenter(place.geometry.location);
-      map.setZoom(15);
-      if (searchMarker) {
-        searchMarker.setMap(null);
-      }
-      searchMarker = new google.maps.Marker({
-        map,
-        position: place.geometry.location,
-        title: place.name || description
+    // 只有不是从地图点击时才添加到历史记录
+    if (!skipHistory) {
+      addToSearchHistory({
+        placeId: place.place_id || placeId,
+        description: place.name || description
       });
+    }
+
+    // 更新地图上的位置和 marker（只有不是从地图点击时才改变地图中心和创建 marker）
+    if (place.geometry && place.geometry.location) {
+      if (!skipHistory) {
+        map.setCenter(place.geometry.location);
+        map.setZoom(15);
+        if (searchMarker) {
+          searchMarker.setMap(null);
+        }
+        searchMarker = new google.maps.Marker({
+          map,
+          position: place.geometry.location,
+          title: place.name || description
+        });
+      }
+      // 如果 skipHistory = true（从地图点击），marker 已经在外部创建，这里不处理
     }
 
     if (detailsEl) {
