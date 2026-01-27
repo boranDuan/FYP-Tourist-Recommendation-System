@@ -45,13 +45,15 @@
 
 
   .weather-menu {
-    position:absolute; top:80px; right:70px;
+    position:fixed; /* 改为 fixed，相对于视口定位，不受 sidebar 影响 */
+    top:10px;
+    right:40px; /* 固定距离右边缘的位置 */
     background:white; border-radius:12px;
     box-shadow:0 2px 6px rgba(0,0,0,0.2);
     font-family:Arial, sans-serif;
     cursor:pointer;
-    overflow:hidden;
-    z-index:1000;
+    overflow:visible; /* 改为 visible，确保内容可见 */
+    z-index:1001; /* 提高 z-index，确保在 sidebar (z-index:1000) 上方 */
   }
 
   .weather-header { padding:10px 16px; font-weight:bold; font-size:14px; text-align:left; }
@@ -76,10 +78,11 @@
   }
   .legend .bar { width:200px; height:10px; margin-top:4px; }
   #legend-container {
-    position:absolute;
+    position:fixed; /* 改为 fixed，相对于视口定位，不受 sidebar 影响 */
     bottom:100px;
-    left:50%;
-    transform:translateX(-50%);
+    right:150px; /* 移到最右端，距离右边缘200px */
+    left:auto; /* 取消左侧定位 */
+    transform:none; /* 移除居中变换 */
     display:flex;
     flex-direction:column;
     align-items:center;
@@ -231,6 +234,15 @@ function initMap(){
 
     if (!placesService) {
       return;
+    }
+
+    // 如果 search panel 是隐藏的（未折叠状态），先展开它
+    if (!document.body.classList.contains('collapsed')) {
+      document.body.classList.add('collapsed');
+      const collapseBtn = document.getElementById('collapseBtn');
+      if (collapseBtn) {
+        collapseBtn.textContent = '←';
+      }
     }
 
     // 使用 click event 提供的 placeId 调用 getDetails
