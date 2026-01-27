@@ -98,3 +98,32 @@ class Filter(db.Model):
     filter_name = db.Column(db.String(255), unique=True, nullable=False, index=True)
 
     pois = db.relationship('POI', secondary=poi_filter_association, back_populates='filters', lazy='dynamic')
+
+
+class Favorite(db.Model):
+    """用户收藏表"""
+    __tablename__ = 'favorites'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    place_id = db.Column(db.String(255), nullable=False, index=True)  # Google Places API 的 place_id
+    place_name = db.Column(db.String(255), nullable=False)
+    place_data = db.Column(db.JSON, nullable=True)  # 存储完整的 Google Places 数据
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    
+    # 关系
+    user = db.relationship('User', backref='favorites')
+    
+    # 唯一约束：同一用户不能重复收藏同一地点
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'place_id', name='uq_user_place'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'place_id': self.place_id,
+            'place_name': self.place_name,
+            'place_data': self.place_data,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }

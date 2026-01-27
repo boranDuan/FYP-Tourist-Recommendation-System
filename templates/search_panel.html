@@ -829,6 +829,7 @@ function handlePlaceSelected(placeId, description, skipHistory = false) {
   const request = {
     placeId: placeId,
     fields: [
+      'place_id',  // 确保获取 place_id
       'name',
       'rating',
       'user_ratings_total',
@@ -877,12 +878,12 @@ function handlePlaceSelected(placeId, description, skipHistory = false) {
     }
 
     if (detailsEl) {
-      renderPlaceDetails(detailsEl, place);
+      renderPlaceDetails(detailsEl, place, placeId);
     }
   });
 }
 
-function renderPlaceDetails(container, place) {
+function renderPlaceDetails(container, place, placeIdParam = null) {
   const ratingText = place.rating != null ? `${place.rating} / 5` : 'No rating';
   const totalRatings = place.user_ratings_total != null ? ` (${place.user_ratings_total})` : '';
 
@@ -932,14 +933,25 @@ function renderPlaceDetails(container, place) {
       '</div>';
   }
 
+  // 优先使用传入的 placeIdParam，其次使用 place.place_id
+  const placeId = placeIdParam || place.place_id || null;
+  
+  if (!placeId) {
+    console.error('Cannot render place details: place_id is missing', place);
+    container.innerHTML = '<div class="place-placeholder">Place ID is missing. Cannot display details.</div>';
+    return;
+  }
+  
+  const favoriteCheckboxId = `place-favorite-${placeId}`;
+  
   container.innerHTML = `
     <div class="place-details-card">
       <div class="place-title-wrapper">
         <div class="place-title">${place.name || 'Selected place'}</div>
         <div class="place-favorite">
           <div class="like-wrapper">
-            <input class="check" type="checkbox" id="place-favorite-${place.place_id || 'default'}" />
-            <label class="container" for="place-favorite-${place.place_id || 'default'}">
+            <input class="check" type="checkbox" id="${favoriteCheckboxId}" />
+            <label class="container" for="${favoriteCheckboxId}">
               <svg
                 viewBox="0 0 512 512"
                 xmlns="http://www.w3.org/2000/svg"
@@ -979,6 +991,123 @@ function renderPlaceDetails(container, place) {
       ${reviewsHtml ? `<div class="place-section"><div class="place-section-title">Reviews</div>${reviewsHtml}</div>` : ''}
     </div>
   `;
+  
+  // 检查收藏状态并设置初始状态
+  checkFavoriteStatus(placeId, favoriteCheckboxId);
+  
+  // 添加收藏按钮点击事件
+  const favoriteCheckbox = document.getElementById(favoriteCheckboxId);
+  if (favoriteCheckbox) {
+    favoriteCheckbox.addEventListener('change', (e) => {
+      handleFavoriteToggle(e.target.checked, placeId, place);
+    });
+  }
+}
+
+/**
+ * 检查地点是否已收藏
+ */
+async function checkFavoriteStatus(placeId, checkboxId) {
+  if (!placeId || placeId === 'default') {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/api/favorites/check/${placeId}`);
+    const data = await response.json();
+    
+    if (data.success && data.is_favorited) {
+      const checkbox = document.getElementById(checkboxId);
+      if (checkbox) {
+        checkbox.checked = true;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to check favorite status:', error);
+  }
+}
+
+/**
+ * 处理收藏按钮切换
+ */
+async function handleFavoriteToggle(isChecked, placeId, place) {
+  console.log('handleFavoriteToggle called:', { isChecked, placeId, placeName: place?.name });
+  
+  if (!placeId || placeId === 'default' || placeId === null) {
+    console.warn('Invalid place_id:', placeId);
+    alert('Cannot favorite: Place ID is missing');
+    return;
+  }
+  
+  try {
+    if (isChecked) {
+      // 添加收藏
+      console.log('Adding favorite:', { place_id: placeId, place_name: place.name });
+      const response = await fetch('/api/favorites', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          place_id: placeId,
+          place_name: place.name || 'Unknown Place',
+          place_data: place // 存储完整的 Google Places 数据
+        })
+      });
+      
+      const data = await response.json();
+      console.log('Add favorite response:', data);
+      
+      if (!data.success) {
+        // 如果失败，恢复 checkbox 状态
+        const checkbox = document.getElementById(`place-favorite-${placeId}`);
+        if (checkbox) {
+          checkbox.checked = false;
+        }
+        if (data.message === 'Please login first') {
+          alert('Please login to add favorites');
+        } else {
+          console.error('Failed to add favorite:', data.message);
+          alert('Failed to add favorite: ' + data.message);
+        }
+      } else {
+        console.log('Favorite added successfully!');
+      }
+    } else {
+      // 取消收藏
+      console.log('Removing favorite:', placeId);
+      const response = await fetch(`/api/favorites/${placeId}`, {
+        method: 'DELETE'
+      });
+      
+      const data = await response.json();
+      console.log('Remove favorite response:', data);
+      
+      if (!data.success) {
+        // 如果失败，恢复 checkbox 状态
+        const checkbox = document.getElementById(`place-favorite-${placeId}`);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+        if (data.message === 'Please login first') {
+          alert('Please login to manage favorites');
+        } else {
+          console.error('Failed to remove favorite:', data.message);
+          alert('Failed to remove favorite: ' + data.message);
+        }
+      } else {
+        console.log('Favorite removed successfully!');
+      }
+    }
+  } catch (error) {
+    console.error('Failed to toggle favorite:', error);
+    // 恢复 checkbox 状态
+    const checkbox = document.getElementById(`place-favorite-${placeId}`);
+    if (checkbox) {
+      checkbox.checked = !isChecked;
+    }
+    alert('Network error: ' + error.message);
+  }
 }
 {% endmacro %}
 

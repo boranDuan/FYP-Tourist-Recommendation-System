@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory, request, session
 from dotenv import load_dotenv
-from mysql import get_database_config, db, User
+from mysql import get_database_config, db, User, Favorite
+from datetime import datetime
 import os
 import webbrowser
 
@@ -118,6 +119,111 @@ def guest_mode():
     """访客模式"""
     session['guest'] = True
     return jsonify({'success': True, 'message': 'Browsing as guest'}), 200
+
+# ========== 收藏功能 API ==========
+
+@app.route("/api/favorites", methods=["POST"])
+def add_favorite():
+    """添加收藏"""
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Please login first'}), 401
+    
+    data = request.get_json()
+    place_id = data.get('place_id', '').strip()
+    place_name = data.get('place_name', '').strip()
+    place_data = data.get('place_data')  # 完整的 Google Places 数据（可选）
+    
+    if not place_id or not place_name:
+        return jsonify({'success': False, 'message': 'place_id and place_name are required'}), 400
+    
+    user_id = session['user_id']
+    
+    # 检查是否已收藏
+    existing = Favorite.query.filter_by(user_id=user_id, place_id=place_id).first()
+    if existing:
+        return jsonify({'success': False, 'message': 'Already favorited'}), 400
+    
+    try:
+        favorite = Favorite(
+            user_id=user_id,
+            place_id=place_id,
+            place_name=place_name,
+            place_data=place_data,
+            created_at=datetime.now()
+        )
+        db.session.add(favorite)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Favorite added successfully',
+            'favorite': favorite.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Failed to add favorite: ' + str(e)}), 500
+
+@app.route("/api/favorites/<place_id>", methods=["DELETE"])
+def remove_favorite(place_id):
+    """取消收藏"""
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Please login first'}), 401
+    
+    user_id = session['user_id']
+    
+    favorite = Favorite.query.filter_by(user_id=user_id, place_id=place_id).first()
+    if not favorite:
+        return jsonify({'success': False, 'message': 'Favorite not found'}), 404
+    
+    try:
+        db.session.delete(favorite)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Favorite removed successfully'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Failed to remove favorite: ' + str(e)}), 500
+
+@app.route("/api/favorites", methods=["GET"])
+def get_favorites():
+    """获取用户收藏列表"""
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Please login first', 'favorites': []}), 401
+    
+    user_id = session['user_id']
+    
+    try:
+        favorites = Favorite.query.filter_by(user_id=user_id).order_by(Favorite.created_at.desc()).all()
+        return jsonify({
+            'success': True,
+            'favorites': [f.to_dict() for f in favorites]
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': 'Failed to get favorites: ' + str(e)}), 500
+
+@app.route("/api/favorites/check/<place_id>", methods=["GET"])
+def check_favorite(place_id):
+    """检查是否已收藏"""
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'success': True, 'is_favorited': False}), 200
+    
+    user_id = session['user_id']
+    
+    try:
+        favorite = Favorite.query.filter_by(user_id=user_id, place_id=place_id).first()
+        return jsonify({
+            'success': True,
+            'is_favorited': favorite is not None
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': 'Failed to check favorite: ' + str(e)}), 500
 
 if __name__ == "__main__":
     url = "http://127.0.0.1:5000/map"
