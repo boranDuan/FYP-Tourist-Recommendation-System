@@ -489,14 +489,49 @@
             });
         });
 
-        // 处理左侧工作栏 Search 点击：切换地图折叠/搜索区域
+        // 处理左侧工作栏 Search 点击：显示搜索面板
         if (searchItem) {
             searchItem.addEventListener('click', (e) => {
                 e.stopPropagation();
-                document.body.classList.toggle('collapsed');
+                const isCurrentlyCollapsed = document.body.classList.contains('collapsed');
+                
+                // 如果当前显示搜索面板，则关闭；否则打开搜索面板并关闭收藏面板
+                if (isCurrentlyCollapsed) {
+                    document.body.classList.remove('collapsed');
+                } else {
+                    document.body.classList.add('collapsed');
+                    document.body.classList.remove('show-favorites'); // 关闭收藏面板
+                }
+                
                 const collapseBtn = document.getElementById('collapseBtn');
                 if (collapseBtn) {
                     collapseBtn.textContent = document.body.classList.contains('collapsed') ? '←' : '→';
+                }
+            });
+        }
+        
+        // 处理左侧工作栏 My Favorite 点击：显示收藏面板
+        const favoriteItem = document.querySelector('.sidebar .item[data-label="My Favorite"]');
+        if (favoriteItem) {
+            favoriteItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isCurrentlyShowingFavorites = document.body.classList.contains('show-favorites');
+                
+                // 如果当前显示收藏面板，则关闭；否则打开收藏面板并关闭搜索面板
+                if (isCurrentlyShowingFavorites) {
+                    document.body.classList.remove('show-favorites');
+                } else {
+                    document.body.classList.add('show-favorites');
+                    document.body.classList.remove('collapsed'); // 关闭搜索面板
+                    // 加载收藏列表
+                    if (typeof loadFavorites === 'function') {
+                        loadFavorites();
+                    }
+                }
+                
+                const collapseBtn = document.getElementById('collapseBtn');
+                if (collapseBtn) {
+                    collapseBtn.textContent = document.body.classList.contains('show-favorites') ? '←' : '→';
                 }
             });
         }

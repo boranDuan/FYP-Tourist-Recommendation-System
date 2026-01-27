@@ -1,0 +1,290 @@
+{% macro favorite_panel_styles() %}
+<link rel="stylesheet" href="{{ url_for('static', filename='favorite_panel.css') }}">
+{% endmacro %}
+
+{% macro favorite_panel_html() %}
+<!-- 收藏面板 -->
+<div id="favorite-panel">
+  <h2>My Favorites</h2>
+  <div id="favorites-container">
+    <div class="favorites-loading">Loading favorites...</div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro favorite_panel_js() %}
+// 收藏面板相关功能
+let favoritesData = [];
+
+/**
+ * 加载收藏列表
+ */
+async function loadFavorites() {
+  const container = document.getElementById('favorites-container');
+  if (!container) return;
+
+  try {
+    container.innerHTML = '<div class="favorites-loading">Loading favorites...</div>';
+    
+    const response = await fetch('/api/favorites');
+    const data = await response.json();
+    
+    if (!data.success) {
+      if (data.message === 'Please login first') {
+        container.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
+      } else {
+        container.innerHTML = '<div class="favorites-empty">Failed to load favorites</div>';
+      }
+      return;
+    }
+    
+    favoritesData = data.favorites || [];
+    
+    if (favoritesData.length === 0) {
+      container.innerHTML = '<div class="favorites-empty">No favorites yet. Start adding places you love!</div>';
+      return;
+    }
+    
+    renderFavorites(container, favoritesData);
+  } catch (error) {
+    console.error('Failed to load favorites:', error);
+    container.innerHTML = '<div class="favorites-empty">Failed to load favorites</div>';
+  }
+}
+
+/**
+ * 渲染收藏列表
+ */
+function renderFavorites(container, favorites) {
+  container.innerHTML = '';
+  
+  favorites.forEach((favorite, index) => {
+    const card = createFavoriteCard(favorite, index);
+    container.appendChild(card);
+  });
+}
+
+/**
+ * 创建单个收藏卡片
+ */
+function createFavoriteCard(favorite, index) {
+  const card = document.createElement('div');
+  card.className = 'favorite-card';
+  card.dataset.favoriteId = favorite.id;
+  
+  // 解析 place_data
+  const placeData = favorite.place_data || {};
+  const photos = placeData.photos || [];
+  const name = favorite.place_name || placeData.name || 'Unknown Place';
+  const rating = placeData.rating || null;
+  const types = placeData.types || [];
+  
+  // 获取类型（取第一个主要类型）
+  const typeText = types.length > 0 
+    ? types[0].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    : '';
+  
+  // 处理 photos 数据（可能是对象数组或字符串数组）
+  let processedPhotos = [];
+  if (Array.isArray(photos) && photos.length > 0) {
+    processedPhotos = photos.map(photo => {
+      // 如果 photo 是对象且有 photo_reference
+      if (typeof photo === 'object' && photo.photo_reference) {
+        return photo.photo_reference;
+      }
+      // 如果 photo 是字符串（URL 或 photo_reference）
+      if (typeof photo === 'string') {
+        return photo;
+      }
+      return null;
+    }).filter(p => p !== null);
+  }
+  
+  // 图片部分
+  let imageHtml = '';
+  if (processedPhotos.length > 0) {
+    // 如果有多个图片，显示箭头
+    const hasMultiplePhotos = processedPhotos.length > 1;
+    imageHtml = `
+      <div class="favorite-card-image-container">
+        <div class="favorite-card-image-wrapper" data-photo-index="0">
+          ${processedPhotos.map((photoRef, photoIndex) => {
+            // 构建图片 URL（使用 photo_reference）
+            // 使用全局 CONFIG 获取 API key
+            const apiKey = (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_MAPS_API_KEY) 
+              ? CONFIG.GOOGLE_MAPS_API_KEY 
+              : '';
+            const photoUrl = apiKey
+              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
+              : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}`;
+            return `<img src="${photoUrl}" alt="${name}" class="favorite-card-image ${photoIndex === 0 ? 'active' : ''}" data-index="${photoIndex}">`;
+          }).join('')}
+        </div>
+        ${hasMultiplePhotos ? `
+          <button class="favorite-card-arrow favorite-card-arrow-left" onclick="navigateFavoritePhoto(${index}, -1)">‹</button>
+          <button class="favorite-card-arrow favorite-card-arrow-right" onclick="navigateFavoritePhoto(${index}, 1)">›</button>
+          <div class="favorite-card-photo-indicators">
+            ${processedPhotos.map((_, photoIndex) => `<span class="photo-indicator ${photoIndex === 0 ? 'active' : ''}" data-index="${photoIndex}"></span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else {
+    // 没有图片时显示占位符
+    imageHtml = `
+      <div class="favorite-card-image-container">
+        <div class="favorite-card-image-placeholder">
+          <span class="material-symbols-outlined">image</span>
+          <span>No Image</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  // 评分显示
+  let ratingHtml = '';
+  if (rating !== null && rating !== undefined) {
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    ratingHtml = `
+      <div class="favorite-card-rating">
+        <span class="rating-value">${rating.toFixed(1)}</span>
+        <div class="rating-stars">
+          ${Array.from({ length: 5 }, (_, i) => {
+            if (i < fullStars) {
+              return '<span class="star filled">★</span>';
+            } else if (i === fullStars && hasHalfStar) {
+              return '<span class="star half">★</span>';
+            } else {
+              return '<span class="star">★</span>';
+            }
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  card.innerHTML = `
+    ${imageHtml}
+    <div class="favorite-card-content">
+      <h3 class="favorite-card-name">${name}</h3>
+      ${ratingHtml}
+      ${typeText ? `<div class="favorite-card-type">${typeText}</div>` : ''}
+    </div>
+  `;
+  
+  // 添加点击事件：点击卡片可以在地图上显示该地点
+  card.addEventListener('click', () => {
+    // 先展开搜索面板（显示地点详情）
+    if (!document.body.classList.contains('collapsed')) {
+      document.body.classList.add('collapsed');
+      const collapseBtn = document.getElementById('collapseBtn');
+      if (collapseBtn) {
+        collapseBtn.textContent = '←';
+      }
+    }
+    // 关闭收藏面板
+    document.body.classList.remove('show-favorites');
+    
+    // 调用 handlePlaceSelected 显示地点详情
+    if (typeof handlePlaceSelected === 'function') {
+      handlePlaceSelected(favorite.place_id, name, true);
+    }
+  });
+  
+  return card;
+}
+
+/**
+ * 导航收藏卡片的图片
+ */
+function navigateFavoritePhoto(cardIndex, direction) {
+  const cards = document.querySelectorAll('.favorite-card');
+  if (cardIndex >= cards.length) return;
+  
+  const card = cards[cardIndex];
+  const imageWrapper = card.querySelector('.favorite-card-image-wrapper');
+  const images = card.querySelectorAll('.favorite-card-image');
+  const indicators = card.querySelectorAll('.photo-indicator');
+  
+  if (!imageWrapper || images.length === 0) return;
+  
+  const currentIndex = parseInt(imageWrapper.dataset.photoIndex || '0');
+  let newIndex = currentIndex + direction;
+  
+  if (newIndex < 0) {
+    newIndex = images.length - 1;
+  } else if (newIndex >= images.length) {
+    newIndex = 0;
+  }
+  
+  // 更新显示的图片
+  images.forEach((img, idx) => {
+    if (idx === newIndex) {
+      img.classList.add('active');
+    } else {
+      img.classList.remove('active');
+    }
+  });
+  
+  // 更新指示器
+  indicators.forEach((indicator, idx) => {
+    if (idx === newIndex) {
+      indicator.classList.add('active');
+    } else {
+      indicator.classList.remove('active');
+    }
+  });
+  
+  imageWrapper.dataset.photoIndex = newIndex;
+}
+
+// 监听收藏面板显示事件，自动加载收藏列表
+(function() {
+  // 监听 body class 变化，当显示收藏面板时加载数据
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        if (document.body.classList.contains('show-favorites')) {
+          // 确保 CONFIG 已加载
+          if (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_MAPS_API_KEY) {
+            loadFavorites();
+          } else {
+            // 如果 CONFIG 未加载，等待一下再试
+            setTimeout(() => {
+              if (typeof CONFIG !== 'undefined') {
+                loadFavorites();
+              }
+            }, 100);
+          }
+        }
+      }
+    });
+  });
+  
+  // 等待 DOM 加载完成后再设置 observer
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+      
+      // 如果页面加载时已经显示收藏面板，立即加载
+      if (document.body.classList.contains('show-favorites')) {
+        loadFavorites();
+      }
+    });
+  } else {
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    // 如果页面加载时已经显示收藏面板，立即加载
+    if (document.body.classList.contains('show-favorites')) {
+      loadFavorites();
+    }
+  }
+})();
+{% endmacro %}

@@ -1051,7 +1051,21 @@ async function handleFavoriteToggle(isChecked, placeId, place) {
         body: JSON.stringify({
           place_id: placeId,
           place_name: place.name || 'Unknown Place',
-          place_data: place // 存储完整的 Google Places 数据
+          place_data: {
+            // 只存储需要的数据：name, rating, types, photos
+            name: place.name,
+            rating: place.rating,
+            types: place.types,
+            photos: place.photos ? place.photos.map(p => ({
+              photo_reference: p.photo_reference || (typeof p.getUrl === 'function' ? null : p)
+            })).filter(p => p.photo_reference) : [],
+            geometry: place.geometry ? {
+              location: {
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng()
+              }
+            } : null
+          }
         })
       });
       

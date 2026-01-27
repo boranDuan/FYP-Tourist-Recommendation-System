@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "search_panel.html" import search_panel_styles, search_panel_html, search_panel_js %}
+{% from "favorite_panel.html" import favorite_panel_styles, favorite_panel_html, favorite_panel_js %}
 
 {% block title %}Dublin Map{% endblock %}
 
@@ -96,7 +97,14 @@
     width: 50%;
   }
 
-  .collapsed .collapse-btn {
+  .show-favorites #map {
+    left: 50%;
+    right: 0;
+    width: 50%;
+  }
+
+  .collapsed .collapse-btn,
+  .show-favorites .collapse-btn {
     left: calc(50% + 10px);
     transform: translateX(-50%);
   }
@@ -112,6 +120,7 @@
   }
 </style>
 {{ search_panel_styles() }}
+{{ favorite_panel_styles() }}
 {% endblock %}
 
 {% block content %}
@@ -119,6 +128,7 @@
 <div class="collapse-btn" id="collapseBtn" title="Collapse map">→</div>
 
 {{ search_panel_html() }}
+{{ favorite_panel_html() }}
 
 
 <div class="weather-menu" id="weatherMenu">
@@ -367,6 +377,9 @@ function initMap(){
   if (typeof initSearch === 'function') {
     initSearch();
   }
+  
+  // 加载收藏面板 JavaScript
+  {{ favorite_panel_js() }}
 
   // 添加地图事件监听器（动态加载 markers）
   if (typeof handleBoundsChange === 'function' && typeof debounce === 'function') {
