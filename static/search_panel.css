@@ -281,6 +281,7 @@ body.collapsed #search-panel {
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+
 }
 
 .place-placeholder {
@@ -289,17 +290,139 @@ body.collapsed #search-panel {
 }
 
 .place-details-card {
-  border-radius: 10px;
-  border: 1px solid #eee;
+  border-radius: 8px; /* 四角稍微圆滑 */
+  border: 1px solid #111; /* 与 filter 一样的外边缘粗细 */
   padding: 12px 14px;
   background: #fafafa;
   font-size: 14px;
 }
 
+.place-title-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
 .place-title {
   font-size: 18px;
   font-weight: 600;
-  margin-bottom: 4px;
+  flex: 1;
+}
+
+.place-favorite {
+  display: flex;
+  align-items: center;
+}
+
+/* 收藏按钮样式 - From Uiverse.io by SalladShooter */
+.like-wrapper {
+  --gap: 0.5em;
+  --radius: 0.35em;
+  display: flex;
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  background: white; /* 白底 */
+  border: 1px solid #111; /* 黑色边框 */
+  padding: 0.5em;
+  border-radius: var(--radius);
+  /*box-shadow: 0 0 1em 0.5em rgba(0, 0, 0, 0.1);*/
+  cursor: pointer;
+}
+
+.check[type="checkbox"] {
+  display: none;
+}
+
+.like-wrapper .container {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  margin-top: -0.25em;
+  margin-bottom: -0.25em;
+  gap: 0.25em; /* 控制图标和文字之间的间距 */
+}
+
+.like-wrapper .icon {
+  width: 1.5em;
+  height: 1.5em;
+  margin-left: 0.25em;
+  /*margin-right: 0.25em; /* 减小与文字的间距 */
+  fill: black; /* 黑色图标 */
+  transition: opacity 0.3s ease-in-out;
+}
+
+.like-wrapper .icon.active {
+  display: none;
+  fill: #f52121; /* 选中时红色 */
+}
+
+.check[type="checkbox"]:checked + .container .icon.active {
+  display: inline-block;
+  animation: wiggle 0.5s ease-in-out;
+}
+
+.check[type="checkbox"]:checked + .container .icon.inactive {
+  display: none;
+}
+
+.like-text-wrapper {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  margin-left: 0.25em; /* 图标和文字之间的间距 */
+  padding: 0; /* 移除内边距 */
+  min-width: auto; /* 移除固定宽度 */
+}
+
+.like-wrapper .like-text {
+  grid-column-start: 1;
+  grid-column-end: 1;
+  grid-row-start: 1;
+  grid-row-end: 1;
+  color: black; /* 黑字 */
+  font-family: Arial, sans-serif;
+  font-weight: bolder; /* 不加粗 */
+  font-size: 13px; /* 与 place-title 一样大 */
+  transition: all 0.5s ease-in-out;
+  white-space: nowrap;
+}
+
+.like-text-1 {
+  transform: translate(0px, 0%);
+  opacity: 1;
+}
+
+.like-text-2 {
+  transform: translate(0px, 100%);
+  opacity: 0;
+}
+
+.check[type="checkbox"]:checked + .container .like-text-1 {
+  transform: translate(0px, -100%);
+  opacity: 0;
+}
+
+.check[type="checkbox"]:checked + .container .like-text-2 {
+  transform: translate(0px, 0%);
+  opacity: 1;
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-10deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+  75% {
+    transform: rotate(-10deg);
+  }
 }
 
 .place-meta {
@@ -408,3 +531,4 @@ body.collapsed #search-panel {
 .place-review-text {
   font-size: 13px;
   color: #555;
+}
