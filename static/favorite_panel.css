@@ -36,9 +36,11 @@ body.show-favorites #favorite-panel {
 #favorites-container {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 20px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 16px; /* 可以调整：减小 gap 让卡片更紧凑，或增大让间距更大 */
   overflow-y: auto;
+  align-content: flex-start;
 }
 
 .favorites-loading,
@@ -47,6 +49,7 @@ body.show-favorites #favorite-panel {
   padding: 40px 20px;
   color: #666;
   font-size: 14px;
+  width: 100%; /* 空状态占满整行 */
 }
 
 /* 收藏卡片样式 */
@@ -58,6 +61,9 @@ body.show-favorites #favorite-panel {
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: calc((100% - 16px) / 2); /* 一行两个：总宽度减去一个 gap，然后除以2 */
+  flex-shrink: 0; /* 防止收缩 */
+  box-sizing: border-box; /* 确保 border 包含在宽度内 */
 }
 
 .favorite-card:hover {
