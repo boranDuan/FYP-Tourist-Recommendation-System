@@ -680,35 +680,67 @@ function createMarkersForPlaces(places) {
       title: place.name || 'Unknown Place',
     });
 
-    // 添加点击事件：显示 place name
+    // 添加点击事件：与地图原生 POI 行为保持一致：
+    // 有照片 → 在 Search panel 显示名片；无照片 → 只显示 InfoWindow
     marker.addListener('click', () => {
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div style="padding: 8px; max-width: 250px;">
-            <strong style="font-size: 14px; display: block; margin-bottom: 4px;">${place.name || 'Unknown Place'}</strong>
-            ${place.vicinity ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">${place.vicinity}</div>` : ''}
-            ${place.types && place.types.length > 0 ? `<div style="font-size: 11px; color: #999; margin-top: 4px;">${place.types[0].replace(/_/g, ' ')}</div>` : ''}
-          </div>
-        `
-      });
-      
-      infoWindow.open(map, marker);
-      
-      // 移除 Google Maps 自动添加的 "View on Google Maps" 链接
-      google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
-        // 查找 InfoWindow 的实际 DOM 元素
-        const infoWindowElement = document.querySelector('.gm-style-iw-d');
-        if (infoWindowElement) {
-          // 移除所有包含 "View on Google Maps" 文本的元素
-          const allElements = infoWindowElement.querySelectorAll('*');
-          allElements.forEach(el => {
-            if (el.textContent && el.textContent.trim() === 'View on Google Maps') {
-              el.remove();
-            }
+      // 需要 place_id 才能获取完整详情
+      if (!place.place_id || !placesService) {
+        return;
+      }
+
+      // 确保 Search panel 展开
+      if (!document.body.classList.contains('collapsed')) {
+        document.body.classList.add('collapsed');
+        const collapseBtn = document.getElementById('collapseBtn');
+        if (collapseBtn) {
+          collapseBtn.textContent = '←';
+        }
+      }
+
+      const request = {
+        placeId: place.place_id,
+        fields: [
+          'place_id',
+          'name',
+          'formatted_address',
+          'photos',
+          'types',
+          'rating',
+          'user_ratings_total',
+          'geometry'
+        ]
+      };
+
+      placesService.getDetails(request, (placeDetails, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !placeDetails) {
+          return;
+        }
+
+        if (placeDetails.photos && placeDetails.photos.length > 0) {
+          // 有照片：只在 Search panel 显示名片（不显示 InfoWindow）
+          handlePlaceSelected(placeDetails.place_id, placeDetails.name || 'Unknown Place', true);
+        } else {
+          // 没有照片：只显示轻量 InfoWindow，并在鼠标移出后自动关闭
+          const infoWindow = new google.maps.InfoWindow({
+            content: `
+              <div style="padding: 8px; max-width: 250px;">
+                <strong style="font-size: 14px; display: block; margin-bottom: 4px;">${placeDetails.name || 'Unknown Place'}</strong>
+                ${placeDetails.formatted_address ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">${placeDetails.formatted_address}</div>` : ''}
+                ${placeDetails.types && placeDetails.types.length > 0 ? `<div style="font-size: 11px; color: #999; margin-top: 4px;">${placeDetails.types[0].replace(/_/g, ' ')}</div>` : ''}
+              </div>
+            `
           });
-          // 移除所有指向 Google Maps 的链接
-          const links = infoWindowElement.querySelectorAll('a[href*="maps.google"], a[href*="google.com/maps"]');
-          links.forEach(link => link.remove());
+
+          infoWindow.open(map, marker);
+          if (typeof attachInfoWindowAutoClose === 'function') {
+            attachInfoWindowAutoClose(infoWindow, marker);
+          }
+
+          // 同时清空 Search panel 名片区域，避免残留旧的名片
+          const detailsEl = document.getElementById('place-details');
+          if (detailsEl) {
+            detailsEl.innerHTML = '';
+          }
         }
       });
     });

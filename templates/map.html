@@ -173,6 +173,60 @@ let map, activeLayer=null, activeLegend=null, selectedOption=null;
 let CONFIG = {};
 let geocoder = null;
 
+/**
+ * 为 InfoWindow 添加“鼠标移出 marker 和 InfoWindow 即自动关闭”的行为
+ */
+function attachInfoWindowAutoClose(infoWindow, marker) {
+  if (!infoWindow || !marker) return;
+
+  let closeTimeout = null;
+
+  function scheduleClose() {
+    if (closeTimeout) {
+      clearTimeout(closeTimeout);
+    }
+    closeTimeout = setTimeout(() => {
+      infoWindow.close();
+    }, 300);
+  }
+
+  function cancelClose() {
+    if (closeTimeout) {
+      clearTimeout(closeTimeout);
+      closeTimeout = null;
+    }
+  }
+
+  // 鼠标移出 marker 后，开始计时准备关闭
+  marker.addListener('mouseout', () => {
+    scheduleClose();
+  });
+
+  // 鼠标移到 marker 上时，取消关闭
+  marker.addListener('mouseover', () => {
+    cancelClose();
+  });
+
+  // InfoWindow DOM 渲染完成后，给内容区域绑定 enter/leave
+  google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+    const iwElement = document.querySelector('.gm-style-iw-d') || document.querySelector('.gm-style-iw');
+    if (!iwElement) return;
+
+    iwElement.addEventListener('mouseenter', () => {
+      cancelClose();
+    });
+
+    iwElement.addEventListener('mouseleave', () => {
+      scheduleClose();
+    });
+  });
+
+  // 主动点击关闭时，清理计时器
+  google.maps.event.addListener(infoWindow, 'closeclick', () => {
+    cancelClose();
+  });
+}
+
 {{ search_panel_js() }}
 
 fetch('/config')
@@ -281,11 +335,16 @@ function initMap(){
 
         // 根据是否有 photos / rating 决定显示方式
         if (place.photos && place.photos.length > 0) {
-          // 有 photos：显示完整信息卡片
+          // 有 photos：显示完整信息卡片（Search panel 名片）
           handlePlaceSelected(place.place_id, place.name || 'Unknown Place', true);
         } else {
-          // 没有 photos：显示轻量 InfoWindow
+          // 没有 photos：只显示轻量 InfoWindow，并清空 Search panel 名片区域
           showLightweightInfoWindow(place, searchMarker);
+
+          const detailsEl = document.getElementById('place-details');
+          if (detailsEl) {
+            detailsEl.innerHTML = '';
+          }
         }
       }
     });
@@ -299,7 +358,7 @@ function initMap(){
 
   /**
    * 显示轻量 InfoWindow（用于没有照片的地点）
-   * 注意：不使用 placeId 属性，只使用自定义 content，避免 Google Maps 自动添加 "View on Google Maps" 链接
+   * 使用自定义 content，不依赖 Google 默认 POI InfoWindow
    */
   function showLightweightInfoWindow(place, marker) {
     if (!place || !marker) return;
@@ -315,24 +374,7 @@ function initMap(){
     });
     
     infoWindow.open(map, marker);
-    
-    // 移除 Google Maps 自动添加的 "View on Google Maps" 链接
-    google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
-      // 查找 InfoWindow 的实际 DOM 元素
-      const infoWindowElement = document.querySelector('.gm-style-iw-d');
-      if (infoWindowElement) {
-        // 移除所有包含 "View on Google Maps" 文本的元素
-        const allElements = infoWindowElement.querySelectorAll('*');
-        allElements.forEach(el => {
-          if (el.textContent && el.textContent.trim() === 'View on Google Maps') {
-            el.remove();
-          }
-        });
-        // 移除所有指向 Google Maps 的链接
-        const links = infoWindowElement.querySelectorAll('a[href*="maps.google"], a[href*="google.com/maps"]');
-        links.forEach(link => link.remove());
-      }
-    });
+    attachInfoWindowAutoClose(infoWindow, marker);
   }
 
   const btn=document.getElementById("collapseBtn");
