@@ -684,14 +684,33 @@ function createMarkersForPlaces(places) {
     marker.addListener('click', () => {
       const infoWindow = new google.maps.InfoWindow({
         content: `
-          <div style="padding: 8px;">
-            <strong>${place.name || 'Unknown Place'}</strong>
-            ${place.vicinity ? `<br><small>${place.vicinity}</small>` : ''}
+          <div style="padding: 8px; max-width: 250px;">
+            <strong style="font-size: 14px; display: block; margin-bottom: 4px;">${place.name || 'Unknown Place'}</strong>
+            ${place.vicinity ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">${place.vicinity}</div>` : ''}
+            ${place.types && place.types.length > 0 ? `<div style="font-size: 11px; color: #999; margin-top: 4px;">${place.types[0].replace(/_/g, ' ')}</div>` : ''}
           </div>
         `
       });
       
       infoWindow.open(map, marker);
+      
+      // 移除 Google Maps 自动添加的 "View on Google Maps" 链接
+      google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+        // 查找 InfoWindow 的实际 DOM 元素
+        const infoWindowElement = document.querySelector('.gm-style-iw-d');
+        if (infoWindowElement) {
+          // 移除所有包含 "View on Google Maps" 文本的元素
+          const allElements = infoWindowElement.querySelectorAll('*');
+          allElements.forEach(el => {
+            if (el.textContent && el.textContent.trim() === 'View on Google Maps') {
+              el.remove();
+            }
+          });
+          // 移除所有指向 Google Maps 的链接
+          const links = infoWindowElement.querySelectorAll('a[href*="maps.google"], a[href*="google.com/maps"]');
+          links.forEach(link => link.remove());
+        }
+      });
     });
 
     // 保存到全局数组

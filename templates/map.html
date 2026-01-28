@@ -242,6 +242,11 @@ function initMap(){
       return;
     }
 
+    // 阻止 Google Maps 默认的 POI InfoWindow 弹出
+    if (typeof e.stop === 'function') {
+      e.stop();
+    }
+
     if (!placesService) {
       return;
     }
@@ -290,6 +295,44 @@ function initMap(){
   if (google.maps.places) {
     placesService = new google.maps.places.PlacesService(map);
     autocompleteService = new google.maps.places.AutocompleteService();
+  }
+
+  /**
+   * 显示轻量 InfoWindow（用于没有照片的地点）
+   * 注意：不使用 placeId 属性，只使用自定义 content，避免 Google Maps 自动添加 "View on Google Maps" 链接
+   */
+  function showLightweightInfoWindow(place, marker) {
+    if (!place || !marker) return;
+    
+    const infoWindow = new google.maps.InfoWindow({
+      content: `
+        <div style="padding: 8px; max-width: 250px;">
+          <strong style="font-size: 14px; display: block; margin-bottom: 4px;">${place.name || 'Unknown Place'}</strong>
+          ${place.formatted_address ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">${place.formatted_address}</div>` : ''}
+          ${place.types && place.types.length > 0 ? `<div style="font-size: 11px; color: #999; margin-top: 4px;">${place.types[0].replace(/_/g, ' ')}</div>` : ''}
+        </div>
+      `
+    });
+    
+    infoWindow.open(map, marker);
+    
+    // 移除 Google Maps 自动添加的 "View on Google Maps" 链接
+    google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+      // 查找 InfoWindow 的实际 DOM 元素
+      const infoWindowElement = document.querySelector('.gm-style-iw-d');
+      if (infoWindowElement) {
+        // 移除所有包含 "View on Google Maps" 文本的元素
+        const allElements = infoWindowElement.querySelectorAll('*');
+        allElements.forEach(el => {
+          if (el.textContent && el.textContent.trim() === 'View on Google Maps') {
+            el.remove();
+          }
+        });
+        // 移除所有指向 Google Maps 的链接
+        const links = infoWindowElement.querySelectorAll('a[href*="maps.google"], a[href*="google.com/maps"]');
+        links.forEach(link => link.remove());
+      }
+    });
   }
 
   const btn=document.getElementById("collapseBtn");
