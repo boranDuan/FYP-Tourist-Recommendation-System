@@ -90,9 +90,11 @@
     </div>
   </div>
 </div>
+
 {% endmacro %}
 
 {% macro search_panel_js() %}
+
 // Places 搜索相关（与地图页面共享的全局变量）
 let placesService = null;
 let autocompleteService = null;
@@ -1303,6 +1305,8 @@ async function handleFavoriteToggle(isChecked, placeId, place) {
     alert('Network error: ' + error.message);
   }
 }
+
 {% endmacro %}
+
 
 

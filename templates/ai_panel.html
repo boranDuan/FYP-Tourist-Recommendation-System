@@ -1,0 +1,36 @@
+{% macro ai_panel_styles() %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ai_panel.css') }}">
+{% endmacro %}
+
+{% macro ai_panel_html() %}
+<!-- AI 推荐面板 -->
+<div id="ai-panel">
+  <h2>AI Recommend</h2>
+  <div id="ai-panel-content">
+    <p class="ai-panel-placeholder">Get personalized recommendations based on your preferences and location. (Coming soon)</p>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro ai_panel_js() %}
+// AI 面板相关（预留，后续可接入推荐逻辑）
+(function() {
+  // 当 body 显示 AI 面板时可在此做初始化
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        if (document.body.classList.contains('show-ai-panel')) {
+          // 例如：加载推荐结果、请求后端等
+        }
+      }
+    });
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    });
+  } else {
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
+})();
+{% endmacro %}
