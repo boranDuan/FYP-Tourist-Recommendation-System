@@ -37,7 +37,21 @@
               <option value="friends_group">Friends Group</option>
               <option value="other">Other</option>
             </select>
-            <input type="number" name="num_people" id="q-num-people" class="q-input q-num-input" placeholder="Number (for Friends Group / Other)" min="1" max="99" style="display:none; margin-top:6px;">
+            <input type="number" name="num_people" id="q-num-people" class="q-input q-num-input" placeholder="Number (for Family / Friends Group / Other)" min="1" max="99" style="display:none; margin-top:6px;">
+          </div>
+
+          <div class="q-field" id="q-field-1b" style="display:none;">
+            <label class="q-label">1b. Does your group include children or seniors?</label>
+            <div class="q-children-seniors-row">
+              <div class="q-inline-label">
+                <label for="q-num-children">Children (&lt;12 years):</label>
+                <input type="number" name="num_children" id="q-num-children" class="q-input q-num-small" min="0" max="20" value="0">
+              </div>
+              <div class="q-inline-label">
+                <label for="q-num-seniors">Seniors (65+ years):</label>
+                <input type="number" name="num_seniors" id="q-num-seniors" class="q-input q-num-small" min="0" max="20" value="0">
+              </div>
+            </div>
           </div>
 
           <div class="q-field">
@@ -53,7 +67,7 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">3. What is your travel budget per person <strong>per day</strong> (approximate)?</label>
+            <label class="q-label">3. What is your travel budget per person <strong>per day</strong>?</label>
             <div class="q-budget-row">
               <input type="number" name="budget_value" id="q-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
               <select name="budget_unit" id="q-budget-unit" class="q-input q-select q-budget-unit">
@@ -126,12 +140,16 @@
 
           <div class="q-field">
             <label class="q-label">9. What time do you usually prefer to start your day?</label>
-            <select name="start_time" id="q-start-time" class="q-input q-select">
-              <option value="">Select...</option>
-              <option value="morning">Morning</option>
-              <option value="late_morning">Late morning</option>
-              <option value="afternoon">Afternoon</option>
-            </select>
+            <div class="q-budget-row">
+              <input type="time" name="start_time_value" id="q-start-time-value" class="q-input q-budget-num" disabled>
+              <select name="start_time_unit" id="q-start-time-unit" class="q-input q-select q-budget-unit">
+                <option value="early_morning">Early morning (7:30–9:00)</option>
+                <option value="morning">Morning (9:00–10:30)</option>
+                <option value="late_morning">Late morning (10:30–12:00)</option>
+                <option value="afternoon">Afternoon (12:00–14:00)</option>
+                <option value="custom">Custom (time)</option>
+              </select>
+            </div>
           </div>
         </section>
 
@@ -140,12 +158,38 @@
 
           <div class="q-field">
             <label class="q-label">10. What kind of food would you like to try?</label>
-            <input type="text" name="food_preference" id="q-food-preference" class="q-input" placeholder="e.g., Irish local cuisine, Asian food">
+            <div class="q-checkbox-group">
+              <span class="q-checkbox-group-label">Irish / Local</span>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="irish_local"> Irish / Local cuisine</label>
+              <span class="q-checkbox-group-label">Asian</span>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="chinese"> Chinese</label>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="japanese"> Japanese</label>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="korean"> Korean</label>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="thai_other_asian"> Thai / Other Asian</label>
+              <span class="q-checkbox-group-label">European</span>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="italian"> Italian</label>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="french"> French</label>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="spanish"> Spanish</label>
+              <label class="q-checkbox"><input type="checkbox" name="food_preference" value="other_european"> Other European</label>
+            </div>
+            <input type="text" name="food_preference_other" id="q-food-preference-other" class="q-input" placeholder="Other: (please specify)" style="margin-top:8px;">
           </div>
 
           <div class="q-field">
-            <label class="q-label">11. Do you have any dietary restrictions or accessibility needs?</label>
-            <input type="text" name="dietary_needs" id="q-dietary-needs" class="q-input" placeholder="e.g., Halal, Gluten-free, Wheelchair accessible">
+            <label class="q-label">11. Dietary needs / restrictions</label>
+            <div class="q-checkbox-group">
+              <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="vegetarian"> Vegetarian</label>
+              <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="vegan"> Vegan</label>
+              <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="halal"> Halal</label>
+              <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="gluten_free"> Gluten-free</label>
+              <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="wheelchair_accessible"> Wheelchair accessible</label>
+              <label class="q-checkbox q-checkbox-with-input">
+                <input type="checkbox" name="dietary_needs" value="allergy" id="q-dietary-allergy">
+                Allergy (please specify)
+              </label>
+              <input type="text" name="dietary_allergy_detail" id="q-dietary-allergy-detail" class="q-input" placeholder="e.g., nuts, shellfish" style="display:none; margin-left:24px; margin-top:4px;">
+            </div>
+            <input type="text" name="dietary_other" id="q-dietary-other" class="q-input" placeholder="Other: (please specify)" style="margin-top:8px;">
           </div>
         </section>
 
@@ -295,13 +339,21 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // 问卷：Friends Group / Other 时显示人数输入
+  // 问卷：Family / Friends Group / Other 时显示人数输入；仅 Family 时显示 1b
   const groupTypeSelect = document.getElementById('q-group-type');
   const numPeopleInput = document.getElementById('q-num-people');
+  const field1b = document.getElementById('q-field-1b');
   if (groupTypeSelect && numPeopleInput) {
     groupTypeSelect.addEventListener('change', function() {
       const v = this.value;
-      numPeopleInput.style.display = (v === 'friends_group' || v === 'other') ? 'block' : 'none';
+      numPeopleInput.style.display = (v === 'family' || v === 'friends_group' || v === 'other') ? 'block' : 'none';
+      if (field1b) {
+        field1b.style.display = v === 'family' ? 'flex' : 'none';
+        if (v !== 'family') {
+          document.getElementById('q-num-children').value = 0;
+          document.getElementById('q-num-seniors').value = 0;
+        }
+      }
     });
   }
 
@@ -320,6 +372,32 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   toggleBudgetInput(document.getElementById('q-budget-unit'), document.getElementById('q-budget-value'));
   toggleBudgetInput(document.getElementById('q-hotel-budget-unit'), document.getElementById('q-hotel-budget-value'));
 
+  // 问卷：Allergy 勾选时显示具体说明输入
+  (function() {
+    const allergyCheck = document.getElementById('q-dietary-allergy');
+    const allergyDetail = document.getElementById('q-dietary-allergy-detail');
+    if (allergyCheck && allergyDetail) {
+      allergyCheck.addEventListener('change', function() {
+        allergyDetail.style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) allergyDetail.value = '';
+      });
+    }
+  })();
+
+  // 问卷：Start time 单位选择 - Custom 时启用时间输入
+  (function() {
+    const unit = document.getElementById('q-start-time-unit');
+    const value = document.getElementById('q-start-time-value');
+    if (!unit || !value) return;
+    const update = () => {
+      const isCustom = unit.value === 'custom';
+      value.disabled = !isCustom;
+      if (!isCustom) value.value = '';
+    };
+    unit.addEventListener('change', update);
+    update();
+  })();
+
   // 问卷：提交（占位，后续接入 API）
   const questionnaireForm = document.getElementById('ai-questionnaire-form');
   if (questionnaireForm) {
@@ -331,14 +409,35 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         if (k === 'interests') {
           data.interests = data.interests || [];
           data.interests.push(v);
-        } else {
+        } else if (k === 'food_preference') {
+          data.food_preference = data.food_preference || [];
+          data.food_preference.push(v);
+        } else if (k === 'dietary_needs') {
+          data.dietary_needs = data.dietary_needs || [];
+          data.dietary_needs.push(v);
+        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other') {
           data[k] = v;
         }
+      }
+      const foodOther = document.getElementById('q-food-preference-other')?.value?.trim();
+      if (foodOther) {
+        data.food_preference = data.food_preference || [];
+        data.food_preference.push('other:' + foodOther);
       }
       const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
       if (interestsOther) {
         data.interests = data.interests || [];
         data.interests.push('other:' + interestsOther);
+      }
+      const allergyDetail = document.getElementById('q-dietary-allergy-detail')?.value?.trim();
+      if (data.dietary_needs?.includes('allergy') && allergyDetail) {
+        data.dietary_needs = data.dietary_needs.filter(x => x !== 'allergy');
+        data.dietary_needs.push('allergy:' + allergyDetail);
+      }
+      const dietaryOther = document.getElementById('q-dietary-other')?.value?.trim();
+      if (dietaryOther) {
+        data.dietary_needs = data.dietary_needs || [];
+        data.dietary_needs.push('other:' + dietaryOther);
       }
       console.log('Questionnaire data:', data);
       closeQuestionnaire();

@@ -284,7 +284,7 @@ body.show-ai-panel #ai-panel {
   margin: 0 0 4px;
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: #000;
   border-bottom: 1px solid #e5e7eb;
   padding-bottom: 6px;
 }
@@ -296,22 +296,23 @@ body.show-ai-panel #ai-panel {
 }
 
 .q-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  color: #4b5563;
+  color: #000;
 }
 
 .q-label em {
   font-weight: 400;
-  color: #6b7280;
+  color: #000;
 }
 
 .q-input {
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   font-family: inherit;
+  color: #374151;
 }
 
 .q-input:focus {
@@ -334,9 +335,32 @@ body.show-ai-panel #ai-panel {
   max-width: 120px;
 }
 
+.q-children-seniors-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.q-inline-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.q-inline-label label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.q-num-small {
+  max-width: 60px;
+}
+
 .q-hint {
   font-size: 12px;
-  color: #6b7280;
+  color: #374151;
   margin-top: 4px;
 }
 
@@ -358,7 +382,7 @@ body.show-ai-panel #ai-panel {
 .q-date-sep-inline {
   display: block;
   font-size: 13px;
-  color: #6b7280;
+  color: #374151;
   margin: 8px 0 4px;
 }
 
@@ -410,11 +434,23 @@ body.show-ai-panel #ai-panel {
   gap: 6px;
 }
 
+.q-checkbox-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 8px;
+  display: block;
+}
+
+.q-checkbox-group-label:first-child {
+  margin-top: 0;
+}
+
 .q-checkbox {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   color: #374151;
   cursor: pointer;

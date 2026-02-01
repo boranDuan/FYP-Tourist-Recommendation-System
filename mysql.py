@@ -162,6 +162,8 @@ class TripPreference(db.Model):
     trip_id = db.Column(db.Integer, db.ForeignKey('trips.trip_id', ondelete='CASCADE'), primary_key=True)
     group_type = db.Column(db.String(32), nullable=True)  # Single / Couple / Family / Friends Group / Other
     num_people = db.Column(db.Integer, nullable=True)
+    num_children = db.Column(db.Integer, nullable=True)  # <12 years
+    num_seniors = db.Column(db.Integer, nullable=True)   # 65+ years
     trip_duration = db.Column(db.String(64), nullable=True)  # e.g. "1 day", "3 days", "1 week"
     budget = db.Column(db.String(64), nullable=True)  # Low(0-50) / Medium(50-100) / High(100-150) 或自定义 €
     hotel_budget = db.Column(db.String(64), nullable=True)  # 50-100 / 100-200 / 200-400 或自定义 €（可选）
@@ -182,6 +184,8 @@ class TripPreference(db.Model):
             'trip_id': self.trip_id,
             'group_type': self.group_type,
             'num_people': self.num_people,
+            'num_children': self.num_children,
+            'num_seniors': self.num_seniors,
             'trip_duration': self.trip_duration,
             'budget': self.budget,
             'hotel_budget': self.hotel_budget,
