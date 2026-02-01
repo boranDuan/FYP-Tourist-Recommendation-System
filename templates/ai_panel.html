@@ -23,7 +23,136 @@
       <button type="button" class="ai-questionnaire-close" id="aiQuestionnaireClose" title="Close">&times;</button>
     </div>
     <div class="ai-questionnaire-body">
-      <!-- 问卷内容占位，后续填充 -->
+      <form id="ai-questionnaire-form" class="q-form">
+        <section class="q-section">
+          <h4 class="q-section-title">(1) Basic Trip Information</h4>
+
+          <div class="q-field">
+            <label class="q-label">1. How many people are traveling?</label>
+            <select name="group_type" id="q-group-type" class="q-input q-select">
+              <option value="">Select...</option>
+              <option value="single">Single</option>
+              <option value="couple">Couple</option>
+              <option value="family">Family</option>
+              <option value="friends_group">Friends Group</option>
+              <option value="other">Other</option>
+            </select>
+            <input type="number" name="num_people" id="q-num-people" class="q-input q-num-input" placeholder="Number (for Friends Group / Other)" min="1" max="99" style="display:none; margin-top:6px;">
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">2. What is your total trip duration?</label>
+            <div class="q-duration-row">
+              <input type="number" name="trip_duration_value" id="q-trip-duration-value" class="q-input q-duration-num" min="1" placeholder="e.g., 3">
+              <select name="trip_duration_unit" id="q-trip-duration-unit" class="q-input q-select q-duration-unit">
+                <option value="day">day(s)</option>
+                <option value="week">week(s)</option>
+                <option value="month">month(s)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">3. What is your travel budget per person <strong>per day</strong> (approximate)?</label>
+            <div class="q-budget-row">
+              <input type="number" name="budget_value" id="q-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
+              <select name="budget_unit" id="q-budget-unit" class="q-input q-select q-budget-unit">
+                <option value="0-50">0–50€</option>
+                <option value="50-100">50–100€</option>
+                <option value="100-150">100–150€</option>
+                <option value="custom">Custom (€)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">4. What is your hotel budget <strong>per night</strong> (optional)</label>
+            <div class="q-budget-row">
+              <input type="number" name="hotel_budget_value" id="q-hotel-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
+              <select name="hotel_budget_unit" id="q-hotel-budget-unit" class="q-input q-select q-budget-unit">
+                <option value="50-100">0–75€</option>
+                <option value="100-200">75–150€</option>
+                <option value="200-400">150–250€</option>
+                <option value="custom">Custom (€)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">5. When will you visit Dublin?</label>
+            <div class="q-date-range">
+              <input type="date" name="visit_date" id="q-visit-date" class="q-input q-date">
+              <span class="q-date-sep">to</span>
+              <input type="date" name="visit_date_end" id="q-visit-date-end" class="q-input q-date">
+            </div>
+            <span class="q-hint">Leave blank for flexible dates</span>
+          </div>
+        </section>
+
+        <section class="q-section">
+          <h4 class="q-section-title">(2) Destination Preferences</h4>
+
+          <div class="q-field">
+            <label class="q-label">6. Which types of places are you most interested in? <em>(Select all that apply)</em></label>
+            <div class="q-checkbox-group">
+              <label class="q-checkbox"><input type="checkbox" name="interests" value="museums_historical"> Museums &amp; Historical Sites</label>
+              <label class="q-checkbox"><input type="checkbox" name="interests" value="parks_nature"> Parks &amp; Nature</label>
+              <label class="q-checkbox"><input type="checkbox" name="interests" value="events_cultural"> Events &amp; Cultural Activities</label>
+              <label class="q-checkbox"><input type="checkbox" name="interests" value="food_restaurants"> Food &amp; Restaurants</label>
+              <label class="q-checkbox"><input type="checkbox" name="interests" value="shopping"> Shopping</label>
+              <label class="q-checkbox"><input type="checkbox" name="interests" value="nightlife_pubs"> Nightlife / Pubs</label>
+            </div>
+            <input type="text" name="interests_other" id="q-interests-other" class="q-input" placeholder="Others (please specify)" style="margin-top:8px;">
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">7. Are there any specific places in Dublin you already want to visit?</label>
+            <textarea name="specific_places" id="q-specific-places" class="q-input q-textarea" rows="2" placeholder="e.g., Trinity College, Guinness Storehouse"></textarea>
+          </div>
+        </section>
+
+        <section class="q-section">
+          <h4 class="q-section-title">(3) Schedule &amp; Pace</h4>
+
+          <div class="q-field">
+            <label class="q-label">8. What kind of travel pace do you prefer?</label>
+            <select name="pace" id="q-pace" class="q-input q-select">
+              <option value="">Select...</option>
+              <option value="relaxed">Relaxed (few activities per day)</option>
+              <option value="balanced">Balanced (mix of sightseeing and rest)</option>
+              <option value="intensive">Intensive (see as many places as possible)</option>
+            </select>
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">9. What time do you usually prefer to start your day?</label>
+            <select name="start_time" id="q-start-time" class="q-input q-select">
+              <option value="">Select...</option>
+              <option value="morning">Morning</option>
+              <option value="late_morning">Late morning</option>
+              <option value="afternoon">Afternoon</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="q-section">
+          <h4 class="q-section-title">(4) Food &amp; Special Preferences</h4>
+
+          <div class="q-field">
+            <label class="q-label">10. What kind of food would you like to try?</label>
+            <input type="text" name="food_preference" id="q-food-preference" class="q-input" placeholder="e.g., Irish local cuisine, Asian food">
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">11. Do you have any dietary restrictions or accessibility needs?</label>
+            <input type="text" name="dietary_needs" id="q-dietary-needs" class="q-input" placeholder="e.g., Halal, Gluten-free, Wheelchair accessible">
+          </div>
+        </section>
+
+        <div class="q-actions">
+          <button type="submit" class="q-submit">Submit</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -164,6 +293,56 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   if (document.body.classList.contains('show-ai-panel')) {
     showWelcomeMessage();
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // 问卷：Friends Group / Other 时显示人数输入
+  const groupTypeSelect = document.getElementById('q-group-type');
+  const numPeopleInput = document.getElementById('q-num-people');
+  if (groupTypeSelect && numPeopleInput) {
+    groupTypeSelect.addEventListener('change', function() {
+      const v = this.value;
+      numPeopleInput.style.display = (v === 'friends_group' || v === 'other') ? 'block' : 'none';
+    });
+  }
+
+  // 问卷：Budget 单位选择 - Custom 时启用数字输入
+  function toggleBudgetInput(unitSelect, valueInput) {
+    if (!unitSelect || !valueInput) return;
+    const update = () => {
+      const isCustom = unitSelect.value === 'custom';
+      valueInput.disabled = !isCustom;
+      valueInput.placeholder = isCustom ? 'e.g., 80' : '—';
+      if (!isCustom) valueInput.value = '';
+    };
+    unitSelect.addEventListener('change', update);
+    update();
+  }
+  toggleBudgetInput(document.getElementById('q-budget-unit'), document.getElementById('q-budget-value'));
+  toggleBudgetInput(document.getElementById('q-hotel-budget-unit'), document.getElementById('q-hotel-budget-value'));
+
+  // 问卷：提交（占位，后续接入 API）
+  const questionnaireForm = document.getElementById('ai-questionnaire-form');
+  if (questionnaireForm) {
+    questionnaireForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const fd = new FormData(this);
+      const data = {};
+      for (const [k, v] of fd.entries()) {
+        if (k === 'interests') {
+          data.interests = data.interests || [];
+          data.interests.push(v);
+        } else {
+          data[k] = v;
+        }
+      }
+      const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
+      if (interestsOther) {
+        data.interests = data.interests || [];
+        data.interests.push('other:' + interestsOther);
+      }
+      console.log('Questionnaire data:', data);
+      closeQuestionnaire();
+    });
   }
 })();
 {% endmacro %}

@@ -160,14 +160,18 @@ class TripPreference(db.Model):
     __tablename__ = 'trip_preferences'
 
     trip_id = db.Column(db.Integer, db.ForeignKey('trips.trip_id', ondelete='CASCADE'), primary_key=True)
+    group_type = db.Column(db.String(32), nullable=True)  # Single / Couple / Family / Friends Group / Other
     num_people = db.Column(db.Integer, nullable=True)
-    trip_duration = db.Column(db.Integer, nullable=True)  # 天数
-    budget = db.Column(db.String(64), nullable=True)  # e.g. "low", "medium", "high"
+    trip_duration = db.Column(db.String(64), nullable=True)  # e.g. "1 day", "3 days", "1 week"
+    budget = db.Column(db.String(64), nullable=True)  # Low(0-50) / Medium(50-100) / High(100-150) 或自定义 €
+    hotel_budget = db.Column(db.String(64), nullable=True)  # 50-100 / 100-200 / 200-400 或自定义 €（可选）
     visit_date = db.Column(db.Date, nullable=True)
-    interests = db.Column(db.JSON, nullable=True)  # JSON array, e.g. ["culture", "food"]
-    pace = db.Column(db.String(32), nullable=True)  # e.g. "relaxed", "moderate", "busy"
-    start_time = db.Column(db.Time, nullable=True)
-    food_preference = db.Column(db.String(128), nullable=True)
+    visit_date_end = db.Column(db.Date, nullable=True)
+    interests = db.Column(db.JSON, nullable=True)  # ["Museums", "Parks", "Food", ...]
+    specific_places = db.Column(db.Text, nullable=True)
+    pace = db.Column(db.String(32), nullable=True)  # relaxed / balanced / intensive
+    start_time = db.Column(db.String(32), nullable=True)  # morning / late_morning / afternoon
+    food_preference = db.Column(db.String(255), nullable=True)
     dietary_needs = db.Column(db.String(255), nullable=True)
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
 
@@ -176,13 +180,17 @@ class TripPreference(db.Model):
     def to_dict(self):
         return {
             'trip_id': self.trip_id,
+            'group_type': self.group_type,
             'num_people': self.num_people,
             'trip_duration': self.trip_duration,
             'budget': self.budget,
+            'hotel_budget': self.hotel_budget,
             'visit_date': self.visit_date.isoformat() if self.visit_date else None,
+            'visit_date_end': self.visit_date_end.isoformat() if self.visit_date_end else None,
             'interests': self.interests,
+            'specific_places': self.specific_places,
             'pace': self.pace,
-            'start_time': str(self.start_time) if self.start_time else None,
+            'start_time': self.start_time,
             'food_preference': self.food_preference,
             'dietary_needs': self.dietary_needs,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,

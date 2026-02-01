@@ -266,3 +266,185 @@ body.show-ai-panel #ai-panel {
   overflow-y: auto;
   padding: 20px;
 }
+
+/* 问卷表单 */
+.q-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.q-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.q-section-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+.q-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.q-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.q-label em {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.q-input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.q-input:focus {
+  outline: none;
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+}
+
+.q-select {
+  cursor: pointer;
+  background: #fff;
+}
+
+.q-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.q-num-input {
+  max-width: 120px;
+}
+
+.q-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.q-date-parts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.q-date-part {
+  min-width: 60px;
+}
+
+.q-date-part:first-child {
+  max-width: 70px;
+}
+
+.q-date-sep-inline {
+  display: block;
+  font-size: 13px;
+  color: #6b7280;
+  margin: 8px 0 4px;
+}
+
+.q-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.q-duration-num {
+  flex: 1;
+  max-width: 100px;
+}
+
+.q-duration-unit {
+  flex: 1;
+  max-width: 120px;
+}
+
+.q-label strong {
+  font-weight: 700;
+}
+
+.q-budget-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.q-budget-num {
+  flex: 1;
+  max-width: 100px;
+}
+
+.q-budget-num:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.q-budget-unit {
+  flex: 1;
+  min-width: 140px;
+}
+
+.q-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.q-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #374151;
+  cursor: pointer;
+}
+
+.q-checkbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.q-actions {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.q-submit {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #0d6efd;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.q-submit:hover {
+  background: #0b5ed7;
+}
