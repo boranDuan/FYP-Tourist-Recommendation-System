@@ -3,34 +3,167 @@
 {% endmacro %}
 
 {% macro ai_panel_html() %}
-<!-- AI 推荐面板 -->
+<!-- AI 对话面板 -->
 <div id="ai-panel">
   <h2>AI Recommend</h2>
-  <div id="ai-panel-content">
-    <p class="ai-panel-placeholder">Get personalized recommendations based on your preferences and location. (Coming soon)</p>
+  <div id="ai-chat-messages" class="ai-chat-messages"></div>
+  <div class="ai-chat-input-wrap">
+    <textarea id="ai-chat-input" class="ai-chat-input" placeholder="Ask for travel recommendations..." rows="2"></textarea>
+    <button type="button" id="ai-chat-send" class="ai-chat-send" title="Send">
+      <span class="material-symbols-outlined">send</span>
+    </button>
+  </div>
+</div>
+
+<!-- 悬浮问卷窗口（右侧） -->
+<div id="ai-questionnaire-overlay" class="ai-questionnaire-overlay">
+  <div class="ai-questionnaire-panel">
+    <div class="ai-questionnaire-header">
+      <h3>Questionnaire</h3>
+      <button type="button" class="ai-questionnaire-close" id="aiQuestionnaireClose" title="Close">&times;</button>
+    </div>
+    <div class="ai-questionnaire-body">
+      <!-- 问卷内容占位，后续填充 -->
+    </div>
   </div>
 </div>
 {% endmacro %}
 
 {% macro ai_panel_js() %}
-// AI 面板相关（预留，后续可接入推荐逻辑）
 (function() {
-  // 当 body 显示 AI 面板时可在此做初始化
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        if (document.body.classList.contains('show-ai-panel')) {
-          // 例如：加载推荐结果、请求后端等
-        }
-      }
-    });
+  const messagesEl = document.getElementById('ai-chat-messages');
+  const inputEl = document.getElementById('ai-chat-input');
+  const sendBtn = document.getElementById('ai-chat-send');
+
+  if (!messagesEl || !inputEl || !sendBtn) return;
+
+  let chatHistory = [];
+  let welcomeShown = false;
+
+  const AI_WELCOME = `Hi!
+I can help you create a personalized Dublin travel itinerary.
+
+To get started, please fill out a short questionnaire about your trip preferences.
+This will help me recommend attractions and generate a realistic day-by-day plan.
+
+<span class="ai-questionnaire-link" role="button" tabindex="0">👉 Click the questionnaire link to begin.</span>`;
+
+  function appendMessage(role, content, isPlaceholder, useHtml) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-msg-wrap ai-msg-' + role;
+    const bubble = document.createElement('div');
+    bubble.className = 'ai-msg-bubble';
+    if (isPlaceholder) {
+      bubble.innerHTML = '<span class="ai-msg-loading"></span>';
+    } else if (useHtml) {
+      const text = document.createElement('div');
+      text.className = 'ai-msg-text';
+      text.innerHTML = content;
+      bubble.appendChild(text);
+    } else {
+      const text = document.createElement('div');
+      text.className = 'ai-msg-text';
+      text.textContent = content;
+      bubble.appendChild(text);
+    }
+    wrap.appendChild(bubble);
+    messagesEl.appendChild(wrap);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return wrap;
+  }
+
+  function setBubbleContent(wrap, content) {
+    const bubble = wrap.querySelector('.ai-msg-bubble');
+    if (bubble) {
+      bubble.innerHTML = '';
+      const text = document.createElement('div');
+      text.className = 'ai-msg-text';
+      text.textContent = content;
+      bubble.appendChild(text);
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function showWelcomeMessage() {
+    if (welcomeShown) return;
+    welcomeShown = true;
+    const wrap = appendMessage('assistant', AI_WELCOME, false, true);
+    chatHistory.push({ role: 'assistant', content: AI_WELCOME.replace(/<[^>]+>/g, '').trim() });
+    const link = wrap.querySelector('.ai-questionnaire-link');
+    if (link) {
+      link.addEventListener('click', openQuestionnaire);
+      link.addEventListener('keydown', function(e) { if (e.key === 'Enter') openQuestionnaire(); });
+    }
+  }
+
+  function openQuestionnaire() {
+    const overlay = document.getElementById('ai-questionnaire-overlay');
+    if (overlay) overlay.classList.add('visible');
+  }
+
+  function closeQuestionnaire() {
+    const overlay = document.getElementById('ai-questionnaire-overlay');
+    if (overlay) overlay.classList.remove('visible');
+  }
+
+  const overlay = document.getElementById('ai-questionnaire-overlay');
+  const closeBtn = document.getElementById('aiQuestionnaireClose');
+  if (closeBtn) closeBtn.addEventListener('click', closeQuestionnaire);
+  if (overlay) overlay.addEventListener('click', function(e) { if (e.target === overlay) closeQuestionnaire(); });
+
+  const obs = new MutationObserver(function(mutations) {
+    if (document.body.classList.contains('show-ai-panel')) showWelcomeMessage();
   });
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    });
-  } else {
-    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  if (document.body.classList.contains('show-ai-panel')) showWelcomeMessage();
+
+  async function sendMessage() {
+    const raw = (inputEl.value || '').trim();
+    if (!raw) return;
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    appendMessage('user', raw);
+    chatHistory.push({ role: 'user', content: raw });
+
+    const placeholderWrap = appendMessage('assistant', '', true);
+
+    try {
+      const res = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: raw, history: chatHistory })
+      });
+      const data = await res.json();
+
+      if (data.success && data.reply) {
+        setBubbleContent(placeholderWrap, data.reply);
+        chatHistory.push({ role: 'assistant', content: data.reply });
+      } else {
+        setBubbleContent(placeholderWrap, 'Sorry, something went wrong. ' + (data.message || ''));
+      }
+    } catch (err) {
+      setBubbleContent(placeholderWrap, 'Network error. Please try again.');
+    }
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  inputEl.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  if (document.body.classList.contains('show-ai-panel')) {
+    showWelcomeMessage();
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 })();
 {% endmacro %}

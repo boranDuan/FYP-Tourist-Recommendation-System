@@ -7,6 +7,11 @@ import webbrowser
 
 load_dotenv()
 
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
@@ -224,6 +229,56 @@ def check_favorite(place_id):
         }), 200
     except Exception as e:
         return jsonify({'success': False, 'message': 'Failed to check favorite: ' + str(e)}), 500
+
+# ========== AI 对话 API（OpenAI GPT-4.1 mini）==========
+
+@app.route("/api/ai-chat", methods=["POST"])
+def ai_chat():
+    """AI 对话：接收用户消息，调用 OpenAI GPT-4.1 mini，返回助手回复"""
+    data = request.get_json() or {}
+    message = (data.get("message") or "").strip()
+    history = data.get("history") or []  # [{ "role": "user"|"assistant", "content": "..." }]
+
+    if not message:
+        return jsonify({"success": False, "message": "Message is required"}), 400
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"success": False, "message": "AI chat is not configured (missing OPENAI_API_KEY)"}), 503
+
+    if OpenAI is None:
+        return jsonify({"success": False, "message": "OpenAI client not installed"}), 503
+
+    system_prompt = """You are a travel planning assistant for Dublin.
+
+Your role is:
+1. Guide the user through creating a personalized Dublin trip.
+2. Explain clearly that a short questionnaire is required to generate recommendations.
+3. Do NOT ask all questionnaire questions directly.
+4. When the user clicks the questionnaire and submits answers, you will receive a structured summary and convert it into JSON.
+
+Be concise, friendly, and professional."""
+
+    try:
+        client = OpenAI(api_key=api_key)
+        messages = [{"role": "system", "content": system_prompt}]
+        for h in history[-20:]:  # 最多保留最近 20 轮
+            role = h.get("role")
+            content = (h.get("content") or "").strip()
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": message})
+
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages,
+            max_tokens=1024,
+        )
+        reply = (response.choices[0].message.content or "").strip()
+        return jsonify({"success": True, "reply": reply}), 200
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
 
 @app.route("/api/favorites/sync", methods=["POST"])
 def sync_favorites():
