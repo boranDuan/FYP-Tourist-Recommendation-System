@@ -37,7 +37,7 @@
               <option value="friends_group">Friends Group</option>
               <option value="other">Other</option>
             </select>
-            <input type="number" name="num_people" id="q-num-people" class="q-input q-num-input" placeholder="Number (for Family / Friends Group / Other)" min="1" max="99" style="display:none; margin-top:6px;">
+            <input type="number" name="num_people" id="q-num-people" class="q-input q-num-input" placeholder="Number" min="1" max="99" style="display:none; margin-top:6px;">
           </div>
 
           <div class="q-field" id="q-field-1b" style="display:none;">
@@ -61,13 +61,12 @@
               <select name="trip_duration_unit" id="q-trip-duration-unit" class="q-input q-select q-duration-unit">
                 <option value="day">day(s)</option>
                 <option value="week">week(s)</option>
-                <option value="month">month(s)</option>
               </select>
             </div>
           </div>
 
           <div class="q-field">
-            <label class="q-label">3. What is your travel budget per person <strong>per day</strong>?</label>
+            <label class="q-label">3. What is your travel budget per person <strong>per day</strong>? (excluding accommodation)</label>
             <div class="q-budget-row">
               <input type="number" name="budget_value" id="q-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
               <select name="budget_unit" id="q-budget-unit" class="q-input q-select q-budget-unit">
@@ -80,14 +79,23 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">4. What is your hotel budget <strong>per night</strong> (optional)</label>
-            <div class="q-budget-row">
-              <input type="number" name="hotel_budget_value" id="q-hotel-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
+            <label class="q-label">4. Hotel budget <strong>per night</strong> and <strong>preferred area </strong>(optional) </label>
+            <div class="q-budget-row q-hotel-row">
               <select name="hotel_budget_unit" id="q-hotel-budget-unit" class="q-input q-select q-budget-unit">
-                <option value="50-100">0–75€</option>
-                <option value="100-200">75–150€</option>
-                <option value="200-400">150–250€</option>
-                <option value="custom">Custom (€)</option>
+                <option value="">Select budget</option>
+                <option value="0-75">0–75€</option>
+                <option value="75-150">75–150€</option>
+                <option value="150-250">150–225€</option>
+                <option value="225-300">225–300€</option>
+                <option value="more than 300">> 300€</option>
+              </select>
+              <select name="hotel_preferred_area" id="q-hotel-preferred-area" class="q-input q-select q-preferred-area">
+                <option value="">Preferred area</option>
+                <option value="city_centre">City centre</option>
+                <option value="near_main_attractions">Near main attractions</option>
+                <option value="near_public_transport">Near public transport</option>
+                <option value="quiet_residential">Quiet residential area</option>
+                <option value="no_preference">No preference</option>
               </select>
             </div>
           </div>
@@ -112,7 +120,6 @@
               <label class="q-checkbox"><input type="checkbox" name="interests" value="museums_historical"> Museums &amp; Historical Sites</label>
               <label class="q-checkbox"><input type="checkbox" name="interests" value="parks_nature"> Parks &amp; Nature</label>
               <label class="q-checkbox"><input type="checkbox" name="interests" value="events_cultural"> Events &amp; Cultural Activities</label>
-              <label class="q-checkbox"><input type="checkbox" name="interests" value="food_restaurants"> Food &amp; Restaurants</label>
               <label class="q-checkbox"><input type="checkbox" name="interests" value="shopping"> Shopping</label>
               <label class="q-checkbox"><input type="checkbox" name="interests" value="nightlife_pubs"> Nightlife / Pubs</label>
             </div>
@@ -120,8 +127,18 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">7. Are there any specific places in Dublin you already want to visit?</label>
-            <textarea name="specific_places" id="q-specific-places" class="q-input q-textarea" rows="2" placeholder="e.g., Trinity College, Guinness Storehouse"></textarea>
+            <label class="q-label">7. Are there any specific places in Dublin you already want to visit? (optional)</label>
+            <textarea name="specific_places" id="q-specific-places" class="q-input q-textarea q-textarea-compact" rows="1" placeholder="e.g., Trinity College, Guinness Storehouse"></textarea>
+          </div>
+
+          <div class="q-field">
+            <label class="q-label">8. Is there anything you would like to avoid? (optional)</label>
+            <div class="q-checkbox-group">
+              <label class="q-checkbox"><input type="checkbox" name="avoid" value="very_crowded"> Very crowded places</label>
+              <label class="q-checkbox"><input type="checkbox" name="avoid" value="too_much_walking"> Too much walking</label>
+              <label class="q-checkbox"><input type="checkbox" name="avoid" value="tourist_traps"> Tourist traps</label>
+            </div>
+            <input type="text" name="avoid_other" id="q-avoid-other" class="q-input" placeholder="Other: (please specify)" style="margin-top:8px;">
           </div>
         </section>
 
@@ -129,7 +146,7 @@
           <h4 class="q-section-title">(3) Schedule &amp; Pace</h4>
 
           <div class="q-field">
-            <label class="q-label">8. What kind of travel pace do you prefer?</label>
+            <label class="q-label">9. What kind of travel pace do you prefer?</label>
             <select name="pace" id="q-pace" class="q-input q-select">
               <option value="">Select...</option>
               <option value="relaxed">Relaxed (few activities per day)</option>
@@ -139,10 +156,10 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">9. What time do you usually prefer to start your day?</label>
-            <div class="q-budget-row">
+            <label class="q-label">10. What time do you usually prefer to start your day?</label>
+            <div class="q-budget-row q-start-time-row">
               <input type="time" name="start_time_value" id="q-start-time-value" class="q-input q-budget-num" disabled>
-              <select name="start_time_unit" id="q-start-time-unit" class="q-input q-select q-budget-unit">
+              <select name="start_time_unit" id="q-start-time-unit" class="q-input q-select q-budget-unit q-start-time-unit">
                 <option value="early_morning">Early morning (7:30–9:00)</option>
                 <option value="morning">Morning (9:00–10:30)</option>
                 <option value="late_morning">Late morning (10:30–12:00)</option>
@@ -157,7 +174,7 @@
           <h4 class="q-section-title">(4) Food &amp; Special Preferences</h4>
 
           <div class="q-field">
-            <label class="q-label">10. What kind of food would you like to try?</label>
+            <label class="q-label">11. What kind of food would you like to try?</label>
             <div class="q-checkbox-group">
               <span class="q-checkbox-group-label">Irish / Local</span>
               <label class="q-checkbox"><input type="checkbox" name="food_preference" value="irish_local"> Irish / Local cuisine</label>
@@ -176,7 +193,7 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">11. Dietary needs / restrictions</label>
+            <label class="q-label">12. Do you have any dietary restrictions or accessibility needs? (optional)</label>
             <div class="q-checkbox-group">
               <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="vegetarian"> Vegetarian</label>
               <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="vegan"> Vegan</label>
@@ -191,8 +208,10 @@
             </div>
             <input type="text" name="dietary_other" id="q-dietary-other" class="q-input" placeholder="Other: (please specify)" style="margin-top:8px;">
           </div>
+
         </section>
 
+        <div class="q-form-error" id="q-form-error" style="display:none;"></div>
         <div class="q-actions">
           <button type="submit" class="q-submit">Submit</button>
         </div>
@@ -370,7 +389,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     update();
   }
   toggleBudgetInput(document.getElementById('q-budget-unit'), document.getElementById('q-budget-value'));
-  toggleBudgetInput(document.getElementById('q-hotel-budget-unit'), document.getElementById('q-hotel-budget-value'));
 
   // 问卷：Allergy 勾选时显示具体说明输入
   (function() {
@@ -398,11 +416,53 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     update();
   })();
 
+  // 问卷：必填校验（Q4、Q7、Q12 为可选，1b 为可选，其余必填）
+  function validateQuestionnaire() {
+    const errEl = document.getElementById('q-form-error');
+    const errors = [];
+    const groupType = document.getElementById('q-group-type')?.value;
+    const numPeople = document.getElementById('q-num-people')?.value?.trim();
+    const tripDurationVal = document.getElementById('q-trip-duration-value')?.value?.trim();
+    const budgetUnit = document.getElementById('q-budget-unit')?.value;
+    const budgetVal = document.getElementById('q-budget-value')?.value?.trim();
+    const visitDate = document.getElementById('q-visit-date')?.value;
+    const interests = document.querySelectorAll('input[name="interests"]:checked');
+    const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
+    const avoid = document.querySelectorAll('input[name="avoid"]:checked');
+    const avoidOther = document.getElementById('q-avoid-other')?.value?.trim();
+    const pace = document.getElementById('q-pace')?.value;
+    const startTimeUnit = document.getElementById('q-start-time-unit')?.value;
+    const startTimeVal = document.getElementById('q-start-time-value')?.value;
+    const foodPref = document.querySelectorAll('input[name="food_preference"]:checked');
+    const foodOther = document.getElementById('q-food-preference-other')?.value?.trim();
+
+    if (!groupType) errors.push('Q1: Please select how many people are traveling.');
+    if (['family','friends_group','other'].includes(groupType) && !numPeople) errors.push('Q1: Please enter the number of people.');
+    if (!tripDurationVal || parseInt(tripDurationVal,10) < 1) errors.push('Q2: Please enter trip duration.');
+    if (budgetUnit === 'custom' ? !budgetVal : !budgetUnit) errors.push('Q3: Please select or enter your travel budget.');
+    if (!visitDate) errors.push('Q5: Please select your visit date.');
+    if (interests.length === 0 && !interestsOther) errors.push('Q6: Please select at least one type of place or specify in Other.');
+    if (!pace) errors.push('Q9: Please select your travel pace.');
+    if (!startTimeUnit || (startTimeUnit === 'custom' && !startTimeVal)) errors.push('Q10: Please select or enter your preferred start time.');
+    if (foodPref.length === 0 && !foodOther) errors.push('Q11: Please select at least one food type or specify in Other.');
+
+    if (errors.length > 0) {
+      errEl.textContent = errors.join(' ');
+      errEl.style.display = 'block';
+      errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return false;
+    }
+    errEl.style.display = 'none';
+    errEl.textContent = '';
+    return true;
+  }
+
   // 问卷：提交（占位，后续接入 API）
   const questionnaireForm = document.getElementById('ai-questionnaire-form');
   if (questionnaireForm) {
-    questionnaireForm.addEventListener('submit', function(e) {
+    questionnaireForm.addEventListener('submit', async function(e) {
       e.preventDefault();
+      if (!validateQuestionnaire()) return;
       const fd = new FormData(this);
       const data = {};
       for (const [k, v] of fd.entries()) {
@@ -415,7 +475,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         } else if (k === 'dietary_needs') {
           data.dietary_needs = data.dietary_needs || [];
           data.dietary_needs.push(v);
-        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other') {
+        } else if (k === 'avoid') {
+          data.avoid = data.avoid || [];
+          data.avoid.push(v);
+        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other' && k !== 'avoid_other') {
           data[k] = v;
         }
       }
@@ -439,8 +502,40 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         data.dietary_needs = data.dietary_needs || [];
         data.dietary_needs.push('other:' + dietaryOther);
       }
-      console.log('Questionnaire data:', data);
-      closeQuestionnaire();
+      const avoidOther = document.getElementById('q-avoid-other')?.value?.trim();
+      if (avoidOther) {
+        data.avoid = data.avoid || [];
+        data.avoid.push('other:' + avoidOther);
+      }
+      // 后端校验并保存到数据库
+      const errEl = document.getElementById('q-form-error');
+      try {
+        const res = await fetch('/api/trip/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (!result.success) {
+          if (res.status === 401) {
+            errEl.textContent = result.message || 'Please log in to save your trip.';
+          } else if (result.errors && result.errors.length > 0) {
+            errEl.textContent = result.errors.join(' ');
+          } else {
+            errEl.textContent = result.message || 'Failed to save. Please try again.';
+          }
+          errEl.style.display = 'block';
+          errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          return;
+        }
+        errEl.style.display = 'none';
+        closeQuestionnaire();
+      } catch (err) {
+        console.error('Failed to save trip:', err);
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+        errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     });
   }
 })();

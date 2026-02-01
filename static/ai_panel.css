@@ -331,6 +331,10 @@ body.show-ai-panel #ai-panel {
   min-height: 60px;
 }
 
+.q-textarea-compact {
+  min-height: 36px;
+}
+
 .q-num-input {
   max-width: 120px;
 }
@@ -425,7 +429,28 @@ body.show-ai-panel #ai-panel {
 
 .q-budget-unit {
   flex: 1;
-  min-width: 140px;
+  max-width: 120px;
+  min-width: 100px;
+}
+
+.q-hotel-row {
+  flex-wrap: nowrap;
+}
+
+.q-hotel-row .q-budget-unit {
+  min-width: 130px;
+  flex: 1 1 auto;
+}
+
+.q-preferred-area {
+  min-width: 110px;
+  flex: 1 1 auto;
+}
+
+.q-start-time-row .q-start-time-unit {
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
 }
 
 .q-checkbox-group {
@@ -460,6 +485,16 @@ body.show-ai-panel #ai-panel {
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+
+.q-form-error {
+  padding: 10px 14px;
+  margin-top: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
 }
 
 .q-actions {

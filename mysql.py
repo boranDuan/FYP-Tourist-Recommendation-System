@@ -167,6 +167,7 @@ class TripPreference(db.Model):
     trip_duration = db.Column(db.String(64), nullable=True)  # e.g. "1 day", "3 days", "1 week"
     budget = db.Column(db.String(64), nullable=True)  # Low(0-50) / Medium(50-100) / High(100-150) 或自定义 €
     hotel_budget = db.Column(db.String(64), nullable=True)  # 50-100 / 100-200 / 200-400 或自定义 €（可选）
+    hotel_preferred_area = db.Column(db.String(64), nullable=True)  # city_centre / near_main_attractions / near_public_transport / quiet_residential / no_preference
     visit_date = db.Column(db.Date, nullable=True)
     visit_date_end = db.Column(db.Date, nullable=True)
     interests = db.Column(db.JSON, nullable=True)  # ["Museums", "Parks", "Food", ...]
@@ -175,6 +176,7 @@ class TripPreference(db.Model):
     start_time = db.Column(db.String(32), nullable=True)  # morning / late_morning / afternoon
     food_preference = db.Column(db.String(255), nullable=True)
     dietary_needs = db.Column(db.String(255), nullable=True)
+    avoid = db.Column(db.JSON, nullable=True)  # e.g. ["very_crowded", "tourist_traps", "other:..."]
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
 
     trip = db.relationship('Trip', back_populates='preference')
@@ -189,6 +191,7 @@ class TripPreference(db.Model):
             'trip_duration': self.trip_duration,
             'budget': self.budget,
             'hotel_budget': self.hotel_budget,
+            'hotel_preferred_area': self.hotel_preferred_area,
             'visit_date': self.visit_date.isoformat() if self.visit_date else None,
             'visit_date_end': self.visit_date_end.isoformat() if self.visit_date_end else None,
             'interests': self.interests,
@@ -197,6 +200,7 @@ class TripPreference(db.Model):
             'start_time': self.start_time,
             'food_preference': self.food_preference,
             'dietary_needs': self.dietary_needs,
+            'avoid': self.avoid,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 

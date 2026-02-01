@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory, request, session
 from dotenv import load_dotenv
-from mysql import get_database_config, db, User, Favorite
-from datetime import datetime
+from mysql import get_database_config, db, User, Favorite, Trip, TripPreference
+from datetime import datetime, date
 import os
 import webbrowser
 
@@ -229,6 +229,160 @@ def check_favorite(place_id):
         }), 200
     except Exception as e:
         return jsonify({'success': False, 'message': 'Failed to check favorite: ' + str(e)}), 500
+
+# ========== 问卷校验 API ==========
+# Q4、Q7、Q12 为可选，1b 为可选，其余必填
+
+def validate_questionnaire_data(data):
+    """校验问卷必填项，返回 (is_valid, errors_list)。Q4、Q7、Q12 可选，1b 可选。"""
+    errors = []
+    group_type = (data.get("group_type") or "").strip()
+    num_people = data.get("num_people")
+    trip_duration_value = (data.get("trip_duration_value") or "").strip()
+    budget_unit = (data.get("budget_unit") or "").strip()
+    budget_value = (data.get("budget_value") or "").strip()
+    visit_date = (data.get("visit_date") or "").strip()
+    interests = data.get("interests") or []
+    avoid = data.get("avoid") or []
+    pace = (data.get("pace") or "").strip()
+    start_time_unit = (data.get("start_time_unit") or "").strip()
+    start_time_value = (data.get("start_time_value") or "").strip()
+    food_preference = data.get("food_preference") or []
+
+    if not group_type:
+        errors.append("Q1: Please select how many people are traveling.")
+    if group_type in ("family", "friends_group", "other"):
+        np = num_people if isinstance(num_people, (int, float)) else (num_people and str(num_people).strip())
+        if not np or (isinstance(np, str) and not np) or (isinstance(np, (int, float)) and int(np) < 1):
+            errors.append("Q1: Please enter the number of people.")
+    if not trip_duration_value or (trip_duration_value.isdigit() and int(trip_duration_value) < 1):
+        errors.append("Q2: Please enter trip duration.")
+    if budget_unit == "custom":
+        if not (budget_value and str(budget_value).strip()):
+            errors.append("Q3: Please enter your custom budget amount.")
+    elif not budget_unit:
+        errors.append("Q3: Please select your travel budget.")
+    if not visit_date:
+        errors.append("Q5: Please select your visit date.")
+    if not interests or len(interests) == 0:
+        errors.append("Q6: Please select at least one type of place or specify in Other.")
+    if not pace:
+        errors.append("Q9: Please select your travel pace.")
+    if not start_time_unit:
+        errors.append("Q10: Please select your preferred start time.")
+    if start_time_unit == "custom" and not (start_time_value and str(start_time_value).strip()):
+        errors.append("Q10: Please enter your custom start time.")
+    if not food_preference or len(food_preference) == 0:
+        errors.append("Q11: Please select at least one food type or specify in Other.")
+
+    return (len(errors) == 0, errors)
+
+
+@app.route("/api/questionnaire/validate", methods=["POST"])
+def questionnaire_validate():
+    """校验问卷数据，返回是否通过及错误列表"""
+    data = request.get_json() or {}
+    is_valid, errors = validate_questionnaire_data(data)
+    if is_valid:
+        return jsonify({"success": True}), 200
+    return jsonify({"success": False, "errors": errors}), 400
+
+
+@app.route("/api/trip/create", methods=["POST"])
+def trip_create():
+    """根据问卷数据创建 Trip + TripPreference，需登录"""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "message": "Please log in to save your trip."}), 401
+
+    data = request.get_json() or {}
+    is_valid, errors = validate_questionnaire_data(data)
+    if not is_valid:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    # 解析 trip_duration
+    val = str(data.get("trip_duration_value") or "").strip()
+    unit = (data.get("trip_duration_unit") or "day").strip()
+    trip_duration = f"{val} {unit}(s)" if val else None
+
+    # 解析 budget
+    budget_unit = (data.get("budget_unit") or "").strip()
+    budget_value = str(data.get("budget_value") or "").strip()
+    budget = None
+    if budget_unit == "custom" and budget_value:
+        budget = f"custom:{budget_value}€"
+    elif budget_unit:
+        budget = budget_unit
+
+    # 解析 visit_date / visit_date_end
+    def parse_date(s):
+        if not s or not isinstance(s, str):
+            return None
+        s = s.strip()
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    visit_date = parse_date(data.get("visit_date"))
+    visit_date_end = parse_date(data.get("visit_date_end"))
+
+    # 解析 start_time
+    st_unit = (data.get("start_time_unit") or "").strip()
+    st_val = str(data.get("start_time_value") or "").strip()
+    if st_unit == "custom" and st_val:
+        start_time = f"custom:{st_val}"
+    else:
+        start_time = st_unit if st_unit else None
+
+    # 解析 num_people, num_children, num_seniors
+    def to_int(x):
+        if x is None:
+            return None
+        try:
+            return int(float(x))
+        except (ValueError, TypeError):
+            return None
+
+    food_pref = data.get("food_preference") or []
+    dietary = data.get("dietary_needs") or []
+    food_str = ",".join(food_pref)[:255] if isinstance(food_pref, list) else str(food_pref)[:255]
+    dietary_str = ",".join(dietary)[:255] if isinstance(dietary, list) else str(dietary)[:255]
+
+    try:
+        trip = Trip(user_id=user_id, status="active", is_saved=False)
+        db.session.add(trip)
+        db.session.flush()  # 获取 trip_id
+
+        pref = TripPreference(
+            trip_id=trip.trip_id,
+            group_type=(data.get("group_type") or "").strip() or None,
+            num_people=to_int(data.get("num_people")),
+            num_children=to_int(data.get("num_children")),
+            num_seniors=to_int(data.get("num_seniors")),
+            trip_duration=trip_duration,
+            budget=budget if budget_unit else None,
+            hotel_budget=(data.get("hotel_budget_unit") or "").strip() or None,
+            hotel_preferred_area=(data.get("hotel_preferred_area") or "").strip() or None,
+            visit_date=visit_date,
+            visit_date_end=visit_date_end,
+            interests=data.get("interests") or [],
+            specific_places=(data.get("specific_places") or "").strip() or None,
+            pace=(data.get("pace") or "").strip() or None,
+            start_time=start_time,
+            food_preference=food_str or None,
+            dietary_needs=dietary_str or None,
+            avoid=data.get("avoid") or [],
+        )
+        db.session.add(pref)
+        db.session.commit()
+        return jsonify({"success": True, "trip_id": trip.trip_id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
 
 # ========== AI 对话 API（OpenAI GPT-4.1 mini）==========
 
