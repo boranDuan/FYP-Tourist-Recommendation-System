@@ -127,3 +127,91 @@ class Favorite(db.Model):
             'place_data': self.place_data,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+
+class Trip(db.Model):
+    """行程表：每次用户开始规划即创建一个 Trip"""
+    __tablename__ = 'trips'
+
+    trip_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    status = db.Column(db.String(16), nullable=False, default='active')  # active / archived
+    is_saved = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    saved_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('trips', lazy='dynamic'))
+    preference = db.relationship('TripPreference', back_populates='trip', uselist=False, cascade='all, delete-orphan')
+    itineraries = db.relationship('Itinerary', back_populates='trip', lazy='dynamic', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'trip_id': self.trip_id,
+            'user_id': self.user_id,
+            'status': self.status,
+            'is_saved': self.is_saved,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'saved_at': self.saved_at.isoformat() if self.saved_at else None,
+        }
+
+
+class TripPreference(db.Model):
+    """用户偏好表：问卷 + AI 对话修改后的偏好，每个 Trip 至少有一条最新记录"""
+    __tablename__ = 'trip_preferences'
+
+    trip_id = db.Column(db.Integer, db.ForeignKey('trips.trip_id', ondelete='CASCADE'), primary_key=True)
+    num_people = db.Column(db.Integer, nullable=True)
+    trip_duration = db.Column(db.Integer, nullable=True)  # 天数
+    budget = db.Column(db.String(64), nullable=True)  # e.g. "low", "medium", "high"
+    visit_date = db.Column(db.Date, nullable=True)
+    interests = db.Column(db.JSON, nullable=True)  # JSON array, e.g. ["culture", "food"]
+    pace = db.Column(db.String(32), nullable=True)  # e.g. "relaxed", "moderate", "busy"
+    start_time = db.Column(db.Time, nullable=True)
+    food_preference = db.Column(db.String(128), nullable=True)
+    dietary_needs = db.Column(db.String(255), nullable=True)
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
+
+    trip = db.relationship('Trip', back_populates='preference')
+
+    def to_dict(self):
+        return {
+            'trip_id': self.trip_id,
+            'num_people': self.num_people,
+            'trip_duration': self.trip_duration,
+            'budget': self.budget,
+            'visit_date': self.visit_date.isoformat() if self.visit_date else None,
+            'interests': self.interests,
+            'pace': self.pace,
+            'start_time': str(self.start_time) if self.start_time else None,
+            'food_preference': self.food_preference,
+            'dietary_needs': self.dietary_needs,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class Itinerary(db.Model):
+    """AI 输出路线表：根据 TripPreference 生成的行程，支持多版本"""
+    __tablename__ = 'itineraries'
+
+    itinerary_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    trip_id = db.Column(db.Integer, db.ForeignKey('trips.trip_id', ondelete='CASCADE'), nullable=False, index=True)
+    version = db.Column(db.Integer, nullable=False, default=1)  # 1, 2, 3… 每次生成 +1
+    content_json = db.Column(db.JSON, nullable=True)  # 每天 POI + 顺序 + 时间
+    generated_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)  # 当前 active 的路线
+
+    trip = db.relationship('Trip', back_populates='itineraries')
+
+    __table_args__ = (
+        db.UniqueConstraint('trip_id', 'version', name='uq_trip_version'),
+    )
+
+    def to_dict(self):
+        return {
+            'itinerary_id': self.itinerary_id,
+            'trip_id': self.trip_id,
+            'version': self.version,
+            'content_json': self.content_json,
+            'generated_at': self.generated_at.isoformat() if self.generated_at else None,
+            'is_active': self.is_active,
+        }
