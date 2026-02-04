@@ -467,8 +467,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       const data = {};
       for (const [k, v] of fd.entries()) {
         if (k === 'interests') {
-          data.interests = data.interests || [];
-          data.interests.push(v);
+          data._interestsRaw = data._interestsRaw || [];
+          data._interestsRaw.push(v);
         } else if (k === 'food_preference') {
           data.food_preference = data.food_preference || [];
           data.food_preference.push(v);
@@ -488,10 +488,15 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         data.food_preference.push('other:' + foodOther);
       }
       const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
-      if (interestsOther) {
-        data.interests = data.interests || [];
-        data.interests.push('other:' + interestsOther);
-      }
+      // Convert Q6 selections to weight object: selected=0.5, unselected=0.0
+      const INTEREST_KEYS = { museums_historical: 'museum', parks_nature: 'nature', events_cultural: 'culture', shopping: 'shopping', nightlife_pubs: 'nightlife' };
+      const interestsWeights = { museum: 0.0, culture: 0.0, nature: 0.0, shopping: 0.0, nightlife: 0.0 };
+      (data._interestsRaw || []).forEach(val => {
+        if (INTEREST_KEYS[val] !== undefined) interestsWeights[INTEREST_KEYS[val]] = 0.5;
+      });
+      if (interestsOther) interestsWeights.other = 0.5;
+      data.interests = interestsWeights;
+      delete data._interestsRaw;
       const allergyDetail = document.getElementById('q-dietary-allergy-detail')?.value?.trim();
       if (data.dietary_needs?.includes('allergy') && allergyDetail) {
         data.dietary_needs = data.dietary_needs.filter(x => x !== 'allergy');

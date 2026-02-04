@@ -264,8 +264,14 @@ def validate_questionnaire_data(data):
         errors.append("Q3: Please select your travel budget.")
     if not visit_date:
         errors.append("Q5: Please select your visit date.")
-    if not interests or len(interests) == 0:
+    # interests: weight object {museum, culture, nature, shopping, nightlife, [other]}, at least one > 0
+    interests = data.get("interests")
+    if not isinstance(interests, dict):
         errors.append("Q6: Please select at least one type of place or specify in Other.")
+    else:
+        has_interest = any(v and float(v) > 0 for v in interests.values())
+        if not has_interest:
+            errors.append("Q6: Please select at least one type of place or specify in Other.")
     if not pace:
         errors.append("Q9: Please select your travel pace.")
     if not start_time_unit:
@@ -368,7 +374,7 @@ def trip_create():
             hotel_preferred_area=(data.get("hotel_preferred_area") or "").strip() or None,
             visit_date=visit_date,
             visit_date_end=visit_date_end,
-            interests=data.get("interests") or [],
+            interests=data.get("interests") if isinstance(data.get("interests"), dict) else {},
             specific_places=(data.get("specific_places") or "").strip() or None,
             pace=(data.get("pace") or "").strip() or None,
             start_time=start_time,
