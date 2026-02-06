@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory, request, session
 from dotenv import load_dotenv
 from mysql import get_database_config, db, User, Favorite, Trip, TripPreference
-from datetime import datetime, date
+from datetime import datetime
 import os
 import webbrowser
 
@@ -264,8 +264,7 @@ def validate_questionnaire_data(data):
         errors.append("Q3: Please select your travel budget.")
     if not visit_date:
         errors.append("Q5: Please select your visit date.")
-    # interests: weight object {museum, culture, nature, shopping, nightlife, [other]}, at least one > 0
-    interests = data.get("interests")
+    # interests: weight object {museum, culture, ...}, at least one > 0
     if not isinstance(interests, dict):
         errors.append("Q6: Please select at least one type of place or specify in Other.")
     else:
@@ -306,12 +305,10 @@ def trip_create():
     if not is_valid:
         return jsonify({"success": False, "errors": errors}), 400
 
-    # 解析 trip_duration
     val = str(data.get("trip_duration_value") or "").strip()
     unit = (data.get("trip_duration_unit") or "day").strip()
     trip_duration = f"{val} {unit}(s)" if val else None
 
-    # 解析 budget
     budget_unit = (data.get("budget_unit") or "").strip()
     budget_value = str(data.get("budget_value") or "").strip()
     budget = None
@@ -320,7 +317,6 @@ def trip_create():
     elif budget_unit:
         budget = budget_unit
 
-    # 解析 visit_date / visit_date_end
     def parse_date(s):
         if not s or not isinstance(s, str):
             return None
@@ -335,15 +331,10 @@ def trip_create():
     visit_date = parse_date(data.get("visit_date"))
     visit_date_end = parse_date(data.get("visit_date_end"))
 
-    # 解析 start_time
     st_unit = (data.get("start_time_unit") or "").strip()
     st_val = str(data.get("start_time_value") or "").strip()
-    if st_unit == "custom" and st_val:
-        start_time = f"custom:{st_val}"
-    else:
-        start_time = st_unit if st_unit else None
+    start_time = f"custom:{st_val}" if st_unit == "custom" and st_val else (st_unit if st_unit else None)
 
-    # 解析 num_people, num_children, num_seniors
     def to_int(x):
         if x is None:
             return None
@@ -357,10 +348,13 @@ def trip_create():
     food_str = ",".join(food_pref)[:255] if isinstance(food_pref, list) else str(food_pref)[:255]
     dietary_str = ",".join(dietary)[:255] if isinstance(dietary, list) else str(dietary)[:255]
 
+    interests = data.get("interests")
+    interests_data = interests if isinstance(interests, dict) else {}
+
     try:
         trip = Trip(user_id=user_id, status="active", is_saved=False)
         db.session.add(trip)
-        db.session.flush()  # 获取 trip_id
+        db.session.flush()
 
         pref = TripPreference(
             trip_id=trip.trip_id,
@@ -374,7 +368,7 @@ def trip_create():
             hotel_preferred_area=(data.get("hotel_preferred_area") or "").strip() or None,
             visit_date=visit_date,
             visit_date_end=visit_date_end,
-            interests=data.get("interests") if isinstance(data.get("interests"), dict) else {},
+            interests=interests_data,
             specific_places=(data.get("specific_places") or "").strip() or None,
             pace=(data.get("pace") or "").strip() or None,
             start_time=start_time,
