@@ -55,14 +55,13 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">2. What is your total trip duration?</label>
-            <div class="q-duration-row">
-              <input type="number" name="trip_duration_value" id="q-trip-duration-value" class="q-input q-duration-num" min="1" placeholder="e.g., 3">
-              <select name="trip_duration_unit" id="q-trip-duration-unit" class="q-input q-select q-duration-unit">
-                <option value="day">day(s)</option>
-                <option value="week">week(s)</option>
-              </select>
+            <label class="q-label">2. When will you visit Dublin?</label>
+            <div class="q-date-range">
+              <input type="date" name="visit_date" id="q-visit-date" class="q-input q-date">
+              <span class="q-date-sep">to</span>
+              <input type="date" name="visit_date_end" id="q-visit-date-end" class="q-input q-date">
             </div>
+            <span class="q-hint">Leave blank for flexible dates</span>
           </div>
 
           <div class="q-field">
@@ -99,23 +98,13 @@
               </select>
             </div>
           </div>
-
-          <div class="q-field">
-            <label class="q-label">5. When will you visit Dublin?</label>
-            <div class="q-date-range">
-              <input type="date" name="visit_date" id="q-visit-date" class="q-input q-date">
-              <span class="q-date-sep">to</span>
-              <input type="date" name="visit_date_end" id="q-visit-date-end" class="q-input q-date">
-            </div>
-            <span class="q-hint">Leave blank for flexible dates</span>
-          </div>
         </section>
 
         <section class="q-section">
           <h4 class="q-section-title">(2) Destination Preferences</h4>
 
           <div class="q-field">
-            <label class="q-label">6. Which types of places are you most interested in? <em>(Select all that apply)</em></label>
+            <label class="q-label">5. Which types of places are you most interested in? <em>(Select all that apply)</em></label>
             <div class="q-checkbox-group">
               <label class="q-checkbox"><input type="checkbox" name="interests" value="museums_historical"> Museums &amp; Historical Sites</label>
               <label class="q-checkbox"><input type="checkbox" name="interests" value="parks_nature"> Parks &amp; Nature</label>
@@ -127,12 +116,12 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">7. Are there any specific places in Dublin you already want to visit? (optional)</label>
+            <label class="q-label">6. Are there any specific places in Dublin you already want to visit? (optional)</label>
             <textarea name="specific_places" id="q-specific-places" class="q-input q-textarea q-textarea-compact" rows="1" placeholder="e.g., Trinity College, Guinness Storehouse"></textarea>
           </div>
 
           <div class="q-field">
-            <label class="q-label">8. Is there anything you would like to avoid? (optional)</label>
+            <label class="q-label">7. Is there anything you would like to avoid? (optional)</label>
             <div class="q-checkbox-group">
               <label class="q-checkbox"><input type="checkbox" name="avoid" value="very_crowded"> Very crowded places</label>
               <label class="q-checkbox"><input type="checkbox" name="avoid" value="too_much_walking"> Too much walking</label>
@@ -146,7 +135,7 @@
           <h4 class="q-section-title">(3) Schedule &amp; Pace</h4>
 
           <div class="q-field">
-            <label class="q-label">9. What kind of travel pace do you prefer?</label>
+            <label class="q-label">8. What kind of travel pace do you prefer?</label>
             <select name="pace" id="q-pace" class="q-input q-select">
               <option value="">Select...</option>
               <option value="relaxed">Relaxed (few activities per day)</option>
@@ -156,7 +145,7 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">10. What time do you usually prefer to start your day?</label>
+            <label class="q-label">9. What time do you usually prefer to start your day?</label>
             <div class="q-budget-row q-start-time-row">
               <input type="time" name="start_time_value" id="q-start-time-value" class="q-input q-budget-num" disabled>
               <select name="start_time_unit" id="q-start-time-unit" class="q-input q-select q-budget-unit q-start-time-unit">
@@ -174,7 +163,7 @@
           <h4 class="q-section-title">(4) Food &amp; Special Preferences</h4>
 
           <div class="q-field">
-            <label class="q-label">11. What kind of food would you like to try?</label>
+            <label class="q-label">10. What kind of food would you like to try?</label>
             <div class="q-checkbox-group">
               <span class="q-checkbox-group-label">Irish / Local</span>
               <label class="q-checkbox"><input type="checkbox" name="food_preference" value="irish_local"> Irish / Local cuisine</label>
@@ -193,7 +182,7 @@
           </div>
 
           <div class="q-field">
-            <label class="q-label">12. Do you have any dietary restrictions or accessibility needs? (optional)</label>
+            <label class="q-label">11. Do you have any dietary restrictions or accessibility needs? (optional)</label>
             <div class="q-checkbox-group">
               <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="vegetarian"> Vegetarian</label>
               <label class="q-checkbox"><input type="checkbox" name="dietary_needs" value="vegan"> Vegan</label>
@@ -291,6 +280,23 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   function openQuestionnaire() {
     const overlay = document.getElementById('ai-questionnaire-overlay');
     if (overlay) overlay.classList.add('visible');
+    initDateConstraints();
+  }
+  function initDateConstraints() {
+    const startEl = document.getElementById('q-visit-date');
+    const endEl = document.getElementById('q-visit-date-end');
+    if (!startEl || !endEl) return;
+    const today = new Date().toISOString().slice(0, 10);
+    startEl.setAttribute('min', today);
+    if (startEl.value) endEl.setAttribute('min', startEl.value);
+    if (!startEl.dataset.dateListenerAdded) {
+      startEl.dataset.dateListenerAdded = '1';
+      startEl.addEventListener('change', function() {
+        const v = startEl.value;
+        endEl.setAttribute('min', v || new Date().toISOString().slice(0, 10));
+        if (v && endEl.value && endEl.value < v) endEl.value = '';
+      });
+    }
   }
 
   function closeQuestionnaire() {
@@ -422,10 +428,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const errors = [];
     const groupType = document.getElementById('q-group-type')?.value;
     const numPeople = document.getElementById('q-num-people')?.value?.trim();
-    const tripDurationVal = document.getElementById('q-trip-duration-value')?.value?.trim();
     const budgetUnit = document.getElementById('q-budget-unit')?.value;
     const budgetVal = document.getElementById('q-budget-value')?.value?.trim();
     const visitDate = document.getElementById('q-visit-date')?.value;
+    const visitDateEnd = document.getElementById('q-visit-date-end')?.value;
     const interests = document.querySelectorAll('input[name="interests"]:checked');
     const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
     const avoid = document.querySelectorAll('input[name="avoid"]:checked');
@@ -438,13 +444,17 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
     if (!groupType) errors.push('Q1: Please select how many people are traveling.');
     if (['family','friends_group','other'].includes(groupType) && !numPeople) errors.push('Q1: Please enter the number of people.');
-    if (!tripDurationVal || parseInt(tripDurationVal,10) < 1) errors.push('Q2: Please enter trip duration.');
+    if (!visitDate) errors.push('Q2: Please select your visit start date.');
+    if (visitDate) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (visitDate < today) errors.push('Q2: Start date cannot be in the past.');
+    }
+    if (visitDate && visitDateEnd && visitDateEnd < visitDate) errors.push('Q2: End date cannot be earlier than start date.');
     if (budgetUnit === 'custom' ? !budgetVal : !budgetUnit) errors.push('Q3: Please select or enter your travel budget.');
-    if (!visitDate) errors.push('Q5: Please select your visit date.');
-    if (interests.length === 0 && !interestsOther) errors.push('Q6: Please select at least one type of place or specify in Other.');
-    if (!pace) errors.push('Q9: Please select your travel pace.');
-    if (!startTimeUnit || (startTimeUnit === 'custom' && !startTimeVal)) errors.push('Q10: Please select or enter your preferred start time.');
-    if (foodPref.length === 0 && !foodOther) errors.push('Q11: Please select at least one food type or specify in Other.');
+    if (interests.length === 0 && !interestsOther) errors.push('Q5: Please select at least one type of place or specify in Other.');
+    if (!pace) errors.push('Q8: Please select your travel pace.');
+    if (!startTimeUnit || (startTimeUnit === 'custom' && !startTimeVal)) errors.push('Q9: Please select or enter your preferred start time.');
+    if (foodPref.length === 0 && !foodOther) errors.push('Q10: Please select at least one food type or specify in Other.');
 
     if (errors.length > 0) {
       errEl.textContent = errors.join(' ');

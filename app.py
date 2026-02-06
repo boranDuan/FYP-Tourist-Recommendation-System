@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory, request, session
 from dotenv import load_dotenv
 from mysql import get_database_config, db, User, Favorite, Trip, TripPreference
-from datetime import datetime
+from datetime import datetime, date
 import os
 import webbrowser
 
@@ -238,7 +238,6 @@ def validate_questionnaire_data(data):
     errors = []
     group_type = (data.get("group_type") or "").strip()
     num_people = data.get("num_people")
-    trip_duration_value = (data.get("trip_duration_value") or "").strip()
     budget_unit = (data.get("budget_unit") or "").strip()
     budget_value = (data.get("budget_value") or "").strip()
     visit_date = (data.get("visit_date") or "").strip()
@@ -255,30 +254,35 @@ def validate_questionnaire_data(data):
         np = num_people if isinstance(num_people, (int, float)) else (num_people and str(num_people).strip())
         if not np or (isinstance(np, str) and not np) or (isinstance(np, (int, float)) and int(np) < 1):
             errors.append("Q1: Please enter the number of people.")
-    if not trip_duration_value or (trip_duration_value.isdigit() and int(trip_duration_value) < 1):
-        errors.append("Q2: Please enter trip duration.")
     if budget_unit == "custom":
         if not (budget_value and str(budget_value).strip()):
             errors.append("Q3: Please enter your custom budget amount.")
     elif not budget_unit:
         errors.append("Q3: Please select your travel budget.")
     if not visit_date:
-        errors.append("Q5: Please select your visit date.")
+        errors.append("Q2: Please select your visit start date.")
+    else:
+        today = date.today().isoformat()
+        if visit_date < today:
+            errors.append("Q2: Start date cannot be in the past.")
+        visit_date_end = (data.get("visit_date_end") or "").strip()
+        if visit_date_end and visit_date_end < visit_date:
+            errors.append("Q2: End date cannot be earlier than start date.")
     # interests: weight object {museum, culture, ...}, at least one > 0
     if not isinstance(interests, dict):
-        errors.append("Q6: Please select at least one type of place or specify in Other.")
+        errors.append("Q5: Please select at least one type of place or specify in Other.")
     else:
         has_interest = any(v and float(v) > 0 for v in interests.values())
         if not has_interest:
-            errors.append("Q6: Please select at least one type of place or specify in Other.")
+            errors.append("Q5: Please select at least one type of place or specify in Other.")
     if not pace:
-        errors.append("Q9: Please select your travel pace.")
+        errors.append("Q8: Please select your travel pace.")
     if not start_time_unit:
-        errors.append("Q10: Please select your preferred start time.")
+        errors.append("Q9: Please select your preferred start time.")
     if start_time_unit == "custom" and not (start_time_value and str(start_time_value).strip()):
-        errors.append("Q10: Please enter your custom start time.")
+        errors.append("Q9: Please enter your custom start time.")
     if not food_preference or len(food_preference) == 0:
-        errors.append("Q11: Please select at least one food type or specify in Other.")
+        errors.append("Q10: Please select at least one food type or specify in Other.")
 
     return (len(errors) == 0, errors)
 
@@ -304,10 +308,6 @@ def trip_create():
     is_valid, errors = validate_questionnaire_data(data)
     if not is_valid:
         return jsonify({"success": False, "errors": errors}), 400
-
-    val = str(data.get("trip_duration_value") or "").strip()
-    unit = (data.get("trip_duration_unit") or "day").strip()
-    trip_duration = f"{val} {unit}(s)" if val else None
 
     budget_unit = (data.get("budget_unit") or "").strip()
     budget_value = str(data.get("budget_value") or "").strip()
@@ -362,7 +362,7 @@ def trip_create():
             num_people=to_int(data.get("num_people")),
             num_children=to_int(data.get("num_children")),
             num_seniors=to_int(data.get("num_seniors")),
-            trip_duration=trip_duration,
+            trip_duration=None,
             budget=budget if budget_unit else None,
             hotel_budget=(data.get("hotel_budget_unit") or "").strip() or None,
             hotel_preferred_area=(data.get("hotel_preferred_area") or "").strip() or None,
