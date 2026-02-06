@@ -170,13 +170,14 @@ class TripPreference(db.Model):
     hotel_preferred_area = db.Column(db.String(64), nullable=True)  # city_centre / near_main_attractions / near_public_transport / quiet_residential / no_preference
     visit_date = db.Column(db.Date, nullable=True)
     visit_date_end = db.Column(db.Date, nullable=True)
-    interests = db.Column(db.JSON, nullable=True)  # ["Museums", "Parks", "Food", ...]
+    interests = db.Column(db.JSON, nullable=True)
+    interests_other = db.Column(db.Text, nullable=True)  # 用户自定义兴趣，不进打分函数
     specific_places = db.Column(db.Text, nullable=True)
-    pace = db.Column(db.String(32), nullable=True)  # relaxed / balanced / intensive
-    start_time = db.Column(db.String(32), nullable=True)  # morning / late_morning / afternoon
+    pace = db.Column(db.String(32), nullable=True)
+    start_time = db.Column(db.String(32), nullable=True)
     food_preference = db.Column(db.String(255), nullable=True)
     dietary_needs = db.Column(db.String(255), nullable=True)
-    avoid = db.Column(db.JSON, nullable=True)  # e.g. ["very_crowded", "tourist_traps", "other:..."]
+    avoid = db.Column(db.JSON, nullable=True)
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
 
     trip = db.relationship('Trip', back_populates='preference')
@@ -195,6 +196,7 @@ class TripPreference(db.Model):
             'visit_date': self.visit_date.isoformat() if self.visit_date else None,
             'visit_date_end': self.visit_date_end.isoformat() if self.visit_date_end else None,
             'interests': self.interests,
+            'interests_other': self.interests_other,
             'specific_places': self.specific_places,
             'pace': self.pace,
             'start_time': self.start_time,
@@ -211,10 +213,10 @@ class Itinerary(db.Model):
 
     itinerary_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     trip_id = db.Column(db.Integer, db.ForeignKey('trips.trip_id', ondelete='CASCADE'), nullable=False, index=True)
-    version = db.Column(db.Integer, nullable=False, default=1)  # 1, 2, 3… 每次生成 +1
-    content_json = db.Column(db.JSON, nullable=True)  # 每天 POI + 顺序 + 时间
+    version = db.Column(db.Integer, nullable=False, default=1)
+    content_json = db.Column(db.JSON, nullable=True)  
     generated_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)  # 当前 active 的路线
+    is_active = db.Column(db.Boolean, nullable=False, default=True) 
 
     trip = db.relationship('Trip', back_populates='itineraries')
 

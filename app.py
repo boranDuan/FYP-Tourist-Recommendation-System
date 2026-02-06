@@ -369,6 +369,7 @@ def trip_create():
             visit_date=visit_date,
             visit_date_end=visit_date_end,
             interests=interests_data,
+            interests_other=(data.get("interests_other") or "").strip() or None,
             specific_places=(data.get("specific_places") or "").strip() or None,
             pace=(data.get("pace") or "").strip() or None,
             start_time=start_time,

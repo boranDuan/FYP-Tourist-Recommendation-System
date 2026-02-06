@@ -487,6 +487,67 @@ body.show-ai-panel #ai-panel {
   cursor: pointer;
 }
 
+.q-interests-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.q-rank-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #374151;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.q-rank-item .q-rank-box {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.q-rank-item .q-rank-box:hover {
+  border-color: #0d6efd;
+}
+
+.q-rank-item .q-rank-box:focus {
+  outline: none;
+}
+
+.q-rank-item .q-rank-box:focus-visible {
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.4);
+}
+
+.q-rank-item .q-rank-box-filled {
+  background: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.q-rank-item .q-rank-box-filled .q-rank-num {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .q-form-error {
   padding: 10px 14px;
   margin-top: 12px;

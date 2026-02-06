@@ -104,13 +104,13 @@
           <h4 class="q-section-title">(2) Destination Preferences</h4>
 
           <div class="q-field">
-            <label class="q-label">5. Which types of places are you most interested in? <em>(Select all that apply)</em></label>
-            <div class="q-checkbox-group">
-              <label class="q-checkbox"><input type="checkbox" name="interests" value="museums_historical"> Museums &amp; Historical Sites</label>
-              <label class="q-checkbox"><input type="checkbox" name="interests" value="parks_nature"> Parks &amp; Nature</label>
-              <label class="q-checkbox"><input type="checkbox" name="interests" value="events_cultural"> Events &amp; Cultural Activities</label>
-              <label class="q-checkbox"><input type="checkbox" name="interests" value="shopping"> Shopping</label>
-              <label class="q-checkbox"><input type="checkbox" name="interests" value="nightlife_pubs"> Nightlife / Pubs</label>
+            <label class="q-label">5. Which types of places are you most interested in? <em>(Click to rank by preference, click again to remove)</em></label>
+            <div id="q-interests-rank" class="q-interests-rank">
+              <div class="q-rank-item" data-value="museums_historical">Museums &amp; Historical Sites</div>
+              <div class="q-rank-item" data-value="parks_nature">Parks &amp; Nature</div>
+              <div class="q-rank-item" data-value="events_cultural">Events &amp; Cultural Activities</div>
+              <div class="q-rank-item" data-value="shopping">Shopping</div>
+              <div class="q-rank-item" data-value="nightlife_pubs">Nightlife / Pubs</div>
             </div>
             <input type="text" name="interests_other" id="q-interests-other" class="q-input" placeholder="Others (please specify)" style="margin-top:8px;">
           </div>
@@ -422,6 +422,54 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     update();
   })();
 
+  // 问卷：Q5 兴趣排序（点击排序，再点击取消）
+  const INTEREST_WEIGHTS = { 1: [1.0], 2: [0.7, 0.3], 3: [0.5, 0.3, 0.2], 4: [0.35, 0.3, 0.2, 0.15], 5: [0.35, 0.3, 0.2, 0.1, 0.05] };
+  const INTEREST_VALUE_TO_KEY = { museums_historical: 'museum', parks_nature: 'nature', events_cultural: 'culture', shopping: 'shopping', nightlife_pubs: 'nightlife' };
+  const INTEREST_LABELS = { museums_historical: 'Museums & Historical Sites', parks_nature: 'Parks & Nature', events_cultural: 'Events & Cultural Activities', shopping: 'Shopping', nightlife_pubs: 'Nightlife / Pubs' };
+  let interestsRankOrder = [];
+  (function() {
+    const container = document.getElementById('q-interests-rank');
+    if (!container) return;
+    const allValues = ['museums_historical', 'parks_nature', 'events_cultural', 'shopping', 'nightlife_pubs'];
+    function render() {
+      const selected = interestsRankOrder.map((val, i) => ({ val, rank: i + 1 }));
+      const unselected = allValues.filter(v => !interestsRankOrder.includes(v));
+      container.innerHTML = '';
+      selected.forEach(({ val, rank }) => {
+        const el = document.createElement('div');
+        el.className = 'q-rank-item q-rank-item-selected';
+        el.dataset.value = val;
+        const box = document.createElement('button');
+        box.type = 'button';
+        box.className = 'q-rank-box q-rank-box-filled';
+        box.innerHTML = '<span class="q-rank-num">' + rank + '</span>';
+        const label = document.createElement('span');
+        label.className = 'q-rank-label';
+        label.textContent = INTEREST_LABELS[val] || val;
+        el.appendChild(box);
+        el.appendChild(label);
+        el.addEventListener('click', () => { interestsRankOrder = interestsRankOrder.filter(x => x !== val); render(); });
+        container.appendChild(el);
+      });
+      unselected.forEach(val => {
+        const el = document.createElement('div');
+        el.className = 'q-rank-item';
+        el.dataset.value = val;
+        const box = document.createElement('button');
+        box.type = 'button';
+        box.className = 'q-rank-box';
+        const label = document.createElement('span');
+        label.className = 'q-rank-label';
+        label.textContent = INTEREST_LABELS[val] || val;
+        el.appendChild(box);
+        el.appendChild(label);
+        el.addEventListener('click', () => { interestsRankOrder.push(val); render(); });
+        container.appendChild(el);
+      });
+    }
+    render();
+  })();
+
   // 问卷：必填校验（Q4、Q7、Q12 为可选，1b 为可选，其余必填）
   function validateQuestionnaire() {
     const errEl = document.getElementById('q-form-error');
@@ -432,7 +480,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const budgetVal = document.getElementById('q-budget-value')?.value?.trim();
     const visitDate = document.getElementById('q-visit-date')?.value;
     const visitDateEnd = document.getElementById('q-visit-date-end')?.value;
-    const interests = document.querySelectorAll('input[name="interests"]:checked');
     const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
     const avoid = document.querySelectorAll('input[name="avoid"]:checked');
     const avoidOther = document.getElementById('q-avoid-other')?.value?.trim();
@@ -451,7 +498,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     }
     if (visitDate && visitDateEnd && visitDateEnd < visitDate) errors.push('Q2: End date cannot be earlier than start date.');
     if (budgetUnit === 'custom' ? !budgetVal : !budgetUnit) errors.push('Q3: Please select or enter your travel budget.');
-    if (interests.length === 0 && !interestsOther) errors.push('Q5: Please select at least one type of place or specify in Other.');
+    if (interestsRankOrder.length === 0 && !interestsOther) errors.push('Q5: Please select at least one type of place or specify in Other.');
     if (!pace) errors.push('Q8: Please select your travel pace.');
     if (!startTimeUnit || (startTimeUnit === 'custom' && !startTimeVal)) errors.push('Q9: Please select or enter your preferred start time.');
     if (foodPref.length === 0 && !foodOther) errors.push('Q10: Please select at least one food type or specify in Other.');
@@ -476,10 +523,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       const fd = new FormData(this);
       const data = {};
       for (const [k, v] of fd.entries()) {
-        if (k === 'interests') {
-          data._interestsRaw = data._interestsRaw || [];
-          data._interestsRaw.push(v);
-        } else if (k === 'food_preference') {
+        if (k === 'food_preference') {
           data.food_preference = data.food_preference || [];
           data.food_preference.push(v);
         } else if (k === 'dietary_needs') {
@@ -488,25 +532,24 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         } else if (k === 'avoid') {
           data.avoid = data.avoid || [];
           data.avoid.push(v);
-        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other' && k !== 'avoid_other') {
+        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other' && k !== 'avoid_other' && k !== 'interests_other') {
           data[k] = v;
         }
       }
+      // Q5: 从排序构建 interests 权重对象
+      const weightsArr = INTEREST_WEIGHTS[interestsRankOrder.length] || [1.0];
+      const interestsWeights = { museum: 0, culture: 0, nature: 0, shopping: 0, nightlife: 0 };
+      interestsRankOrder.forEach((val, i) => {
+        const key = INTEREST_VALUE_TO_KEY[val];
+        if (key) interestsWeights[key] = weightsArr[i] || 0;
+      });
+      data.interests = interestsWeights;
+      data.interests_other = document.getElementById('q-interests-other')?.value?.trim() || '';
       const foodOther = document.getElementById('q-food-preference-other')?.value?.trim();
       if (foodOther) {
         data.food_preference = data.food_preference || [];
         data.food_preference.push('other:' + foodOther);
       }
-      const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
-      // Convert Q6 selections to weight object: selected=0.5, unselected=0.0
-      const INTEREST_KEYS = { museums_historical: 'museum', parks_nature: 'nature', events_cultural: 'culture', shopping: 'shopping', nightlife_pubs: 'nightlife' };
-      const interestsWeights = { museum: 0.0, culture: 0.0, nature: 0.0, shopping: 0.0, nightlife: 0.0 };
-      (data._interestsRaw || []).forEach(val => {
-        if (INTEREST_KEYS[val] !== undefined) interestsWeights[INTEREST_KEYS[val]] = 0.5;
-      });
-      if (interestsOther) interestsWeights.other = 0.5;
-      data.interests = interestsWeights;
-      delete data._interestsRaw;
       const allergyDetail = document.getElementById('q-dietary-allergy-detail')?.value?.trim();
       if (data.dietary_needs?.includes('allergy') && allergyDetail) {
         data.dietary_needs = data.dietary_needs.filter(x => x !== 'allergy');
