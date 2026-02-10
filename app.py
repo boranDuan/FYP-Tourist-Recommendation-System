@@ -1,9 +1,12 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory, request, session
 from dotenv import load_dotenv
-from mysql import get_database_config, db, User, Favorite, Trip, TripPreference
+from mysql import get_database_config, db, User, Favorite, Trip, TripPreference, POI
 from datetime import datetime, date
 import os
 import webbrowser
+import math
+from preference_matching import calculate_poi_score
+from rule_based_filtering import step0_hard_filter
 
 load_dotenv()
 
@@ -230,6 +233,39 @@ def check_favorite(place_id):
     except Exception as e:
         return jsonify({'success': False, 'message': 'Failed to check favorite: ' + str(e)}), 500
 
+def _normalize_interests(raw):
+    """将 TripPreference.interests 规范化为 {str: float}."""
+    if raw is None:
+        return {}
+    if isinstance(raw, str):
+        # 兼容字符串存储的 JSON（当前应为 JSON 类型，这里预防一下）
+        try:
+            import json
+            raw = json.loads(raw)
+        except Exception:
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for k, v in raw.items():
+        try:
+            out[str(k)] = float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            out[str(k)] = 0.0
+    return out
+
+
+# Haversine 距离（单位：km）
+def _haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    c = 2 * math.asin(math.sqrt(a))
+    return r * c
+
+
 # ========== 问卷校验 API ==========
 # Q4、Q7、Q12 为可选，1b 为可选，其余必填
 
@@ -382,6 +418,110 @@ def trip_create():
         return jsonify({"success": True, "trip_id": trip.trip_id}), 201
     except Exception as e:
         db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ========== Preference Matching：按兴趣为 Trip 返回候选 POI ==========
+
+@app.route("/api/trips/<int:trip_id>/candidates", methods=["GET"])
+def get_interest_ranked_pois_for_trip(trip_id):
+    """根据 TripPreference.interests 为指定 Trip 返回按兴趣排序的候选 POI 列表。"""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "message": "Please log in first."}), 401
+
+    trip = Trip.query.get(trip_id)
+    if not trip:
+        return jsonify({"success": False, "message": "Trip not found."}), 404
+    if trip.user_id != user_id:
+        return jsonify({"success": False, "message": "You do not have access to this trip."}), 403
+
+    pref = trip.preference
+    if not pref:
+        return jsonify({"success": True, "trip_id": trip_id, "pois": []}), 200
+
+    interests = _normalize_interests(pref.interests)
+    # 如果没有任何正权重兴趣，直接返回空列表
+    if not interests or not any(v and float(v) > 0 for v in interests.values()):
+        return jsonify({"success": True, "trip_id": trip_id, "pois": []}), 200
+
+    # 解析 limit 参数，默认 200
+    limit = request.args.get("limit", default=200, type=int)
+    if not limit or limit <= 0:
+        limit = 200
+
+    try:
+        # Dublin 中心点与半径（km）
+        DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON = 53.3498, -6.2603
+        DUBLIN_RADIUS_KM = 30.0
+        DUBLIN_COUNTIES = {"Dublin", "Dublin City", "Dún Laoghaire-Rathdown", "Fingal", "South Dublin"}
+
+        pois = POI.query.all()
+        scored = []
+        for poi in pois:
+            in_county = getattr(poi, "county", None) in DUBLIN_COUNTIES
+            in_radius = False
+            if poi.latitude is not None and poi.longitude is not None:
+                try:
+                    dist_km = _haversine_km(float(poi.latitude), float(poi.longitude), DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON)
+                    in_radius = dist_km <= DUBLIN_RADIUS_KM
+                except (TypeError, ValueError):
+                    in_radius = False
+
+            if not in_county and not in_radius:
+                continue
+
+            poi_filter_ids = [f.filter_id for f in poi.filters]
+            score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
+            if score > 0:
+                scored.append((poi, score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # 构建带 filter_ids 的列表，供 Rule-based Filtering 使用
+        pois_data = []
+        for poi, score in scored:
+            pois_data.append({
+                "poi_id": poi.poi_id,
+                "name": poi.name,
+                "score": score,
+                "filter_ids": [f.filter_id for f in poi.filters],
+                "latitude": poi.latitude,
+                "longitude": poi.longitude,
+                "tags": poi.tags,
+                "rating": poi.rating,
+                "price_level": poi.price_level,
+            })
+
+        # 若有儿童或老人，做 Step0 硬性人群过滤
+        num_children = (pref.num_children or 0) if pref else 0
+        num_seniors = (pref.num_seniors or 0) if pref else 0
+        if num_children > 0 or num_seniors > 0:
+            try:
+                import googlemaps
+                gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
+            except Exception:
+                gmaps = None
+            pois_data = step0_hard_filter(pois_data, pref, gmaps=gmaps)
+
+        pois_data = pois_data[:limit]
+
+        # 返回时只暴露对外字段，去掉 filter_ids 等内部标记
+        out = []
+        for p in pois_data:
+            out.append({
+                "poi_id": p["poi_id"],
+                "name": p["name"],
+                "score": p["score"],
+                "latitude": p["latitude"],
+                "longitude": p["longitude"],
+                "tags": p["tags"],
+                "rating": p.get("rating"),
+                "price_level": p.get("price_level"),
+            })
+
+        return jsonify({"success": True, "trip_id": trip_id, "pois": out}), 200
+    except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
 
