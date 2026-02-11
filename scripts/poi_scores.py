@@ -21,9 +21,9 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
 from flask import Flask
-from mysql import get_database_config, db, POI, TripPreference
+from mysql import get_database_config, db, POI, TripPreference, Filter
 from preference_matching import calculate_poi_score
-from rule_based_filtering import step0_hard_filter
+from rule_based_filtering import step0_hard_filter, apply_avoid_filter
 
 
 def create_app():
@@ -58,7 +58,7 @@ def run(trip_id=None, limit=None):
         if trip_id is not None:
             pref = TripPreference.query.filter_by(trip_id=trip_id).first()
             if not pref:
-                print(f"Trip {trip_id} 没有找到 TripPreference")
+                print(f"Trip {trip_id}: TripPreference not found")
                 return
         else:
             pref = TripPreference.query.order_by(TripPreference.updated_at.desc()).first()
@@ -68,9 +68,9 @@ def run(trip_id=None, limit=None):
             print(f"Trip ID: {pref.trip_id}")
             nc = (pref.num_children or 0) if hasattr(pref, "num_children") else 0
             ns = (pref.num_seniors or 0) if hasattr(pref, "num_seniors") else 0
-            print(f"num_children={nc}, num_seniors={ns} (Rule-based 过滤: {'是' if (nc > 0 or ns > 0) else '否'})")
+            print(f"num_children={nc}, num_seniors={ns}")
         else:
-            print("数据库中没有 TripPreference，使用默认 interests 演示")
+            print("No TripPreference in DB, using default interests for demo")
             interests = {"museum": 0.5, "culture": 0.5, "nature": 0.0, "shopping": 0.0, "nightlife": 0.0}
 
         print("Interests:", json.dumps(interests, ensure_ascii=False))
@@ -111,10 +111,14 @@ def run(trip_id=None, limit=None):
             results.append((poi, score))
 
         results.sort(key=lambda x: x[1], reverse=True)
+        total_in_region = len(results)
+        count_positive = sum(1 for _, s in results if s > 0)
 
-        # 转成带 filter_ids 的 dict 列表，供人群过滤
+        # 只对得分>0 的做人群过滤（与 API 一致），转成带 filter_ids 的 dict 列表
         pois_data = []
         for poi, score in results:
+            if score <= 0:
+                continue
             pois_data.append({
                 "poi_id": poi.poi_id,
                 "name": poi.name,
@@ -122,7 +126,7 @@ def run(trip_id=None, limit=None):
                 "filter_ids": [f.filter_id for f in poi.filters],
             })
 
-        # 若有儿童/老人，做 Step0 人群过滤（与 API 一致）
+        # Step0 人群过滤（与 API 一致）
         num_children = (pref.num_children or 0) if pref else 0
         num_seniors = (pref.num_seniors or 0) if pref else 0
         if num_children > 0 or num_seniors > 0:
@@ -133,17 +137,40 @@ def run(trip_id=None, limit=None):
             except Exception:
                 gmaps = None
             pois_data = step0_hard_filter(pois_data, pref, gmaps=gmaps)
-            print("已应用 Rule-based 人群过滤 (Step0)")
-        if limit is not None:
-            pois_data = pois_data[:limit]
+            print("Applied Rule-based population filter (Step0)")
+        else:
+            print("Skipped Rule-based population filter (Step0)")
+        count_after_pop_filter = len(pois_data)
+
+        # Step1 避免题过滤
+        avoid_list = pref.avoid if pref and pref.avoid and isinstance(pref.avoid, list) else []
+        if avoid_list:
+            all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
+            print("Applied Rule-based avoid filter (Step1)")
+            pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters, debug=True)
+        else:
+            print("Skipped Rule-based avoid filter (Step1)")
+        count_after_avoid_filter = len(pois_data)
+
+        # 只展示前 limit 条，但总结用全量数字
+        display_list = pois_data[:limit] if limit is not None else pois_data
 
         print(f"{'poi_id':<8} {'score':<8} {'name'}")
         print("-" * 60)
-        for p in pois_data:
+        for p in display_list:
             name = (p.get("name") or "")[:45]
             print(f"{p['poi_id']:<8} {p['score']:<8.2f} {name}")
         print("-" * 60)
-        print(f"候选 POI 数: {len(pois_data)}（得分>0 且通过区域+人群过滤）")
+        n_display = len(display_list)
+        summary = (
+            f"Total {total_in_region} POIs (Dublin region), {count_positive} with score > 0 ("
+            f"{count_after_pop_filter} after region+population filter, "
+            f"{count_after_avoid_filter} after avoid filter"
+        )
+        if limit is not None and n_display < count_after_avoid_filter:
+            summary += f", showing top {n_display}"
+        summary += ")"
+        print(summary)
 
 
 if __name__ == "__main__":

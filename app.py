@@ -1,12 +1,12 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory, request, session
 from dotenv import load_dotenv
-from mysql import get_database_config, db, User, Favorite, Trip, TripPreference, POI
+from mysql import get_database_config, db, User, Favorite, Trip, TripPreference, POI, Filter
 from datetime import datetime, date
 import os
 import webbrowser
 import math
 from preference_matching import calculate_poi_score
-from rule_based_filtering import step0_hard_filter
+from rule_based_filtering import step0_hard_filter, apply_avoid_filter
 
 load_dotenv()
 
@@ -503,6 +503,12 @@ def get_interest_ranked_pois_for_trip(trip_id):
             except Exception:
                 gmaps = None
             pois_data = step0_hard_filter(pois_data, pref, gmaps=gmaps)
+
+        # 第七题 Avoid 过滤：根据 avoid 输入匹配 filter，删除命中 POI
+        avoid_list = pref.avoid if pref and pref.avoid and isinstance(pref.avoid, list) else []
+        if avoid_list:
+            all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
+            pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
 
         pois_data = pois_data[:limit]
 
