@@ -95,13 +95,13 @@ def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model
         return None, None
 
     def upsert_cache(user_input, poi_id, resolved_name, google_place_id=None):
-        row = db_session.query(MustVisitCache).filter_by(user_input=user_input).first()
+        row = MustVisitCache.query.filter_by(user_input=user_input).first()
         if row:
             row.poi_id = poi_id
             row.resolved_name = resolved_name
             row.google_place_id = google_place_id
         else:
-            db_session.add(MustVisitCache(
+            db.session.add(MustVisitCache(
                 user_input=user_input,
                 poi_id=poi_id,
                 resolved_name=resolved_name,
@@ -117,7 +117,7 @@ def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model
         google_place_id = None
 
         # 1) 先查缓存
-        cached = db_session.query(MustVisitCache).filter_by(user_input=token).first()
+        cached = MustVisitCache.query.filter_by(user_input=token).first()
         if cached is not None:
             if cached.poi_id is not None and cached.poi_id not in seen:
                 seen.add(cached.poi_id)
@@ -158,8 +158,8 @@ def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model
         upsert_cache(token, poi_id, resolved_name or "(unresolved)", google_place_id)
 
     try:
-        db_session.commit()
+        db.session.commit()
     except Exception:
-        db_session.rollback()
+        db.session.rollback()
 
     return result_ids, display_pairs
