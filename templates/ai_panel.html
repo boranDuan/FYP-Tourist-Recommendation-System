@@ -28,7 +28,7 @@
           <h4 class="q-section-title">(1) Basic Trip Information</h4>
 
           <div class="q-field">
-            <label class="q-label">1. How many people are traveling?</label>
+            <label class="q-label">1. How will you be traveling?</label>
             <select name="group_type" id="q-group-type" class="q-input q-select">
               <option value="">Select...</option>
               <option value="single">Single</option>
@@ -37,7 +37,6 @@
               <option value="friends_group">Friends Group</option>
               <option value="other">Other</option>
             </select>
-            <input type="number" name="num_people" id="q-num-people" class="q-input q-num-input" placeholder="Number" min="1" max="99" style="display:none; margin-top:6px;">
           </div>
 
           <div class="q-field" id="q-field-1b" style="display:none;">
@@ -67,13 +66,13 @@
           <div class="q-field">
             <label class="q-label">3. What is your travel budget per person <strong>per day</strong>? (excluding accommodation)</label>
             <div class="q-budget-row">
-              <input type="number" name="budget_value" id="q-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
               <select name="budget_unit" id="q-budget-unit" class="q-input q-select q-budget-unit">
                 <option value="0-50">0–50€</option>
                 <option value="50-100">50–100€</option>
                 <option value="100-150">100–150€</option>
                 <option value="custom">Custom (€)</option>
               </select>
+              <input type="number" name="budget_value" id="q-budget-value" class="q-input q-budget-num" min="0" step="1" placeholder="—">
             </div>
           </div>
 
@@ -147,7 +146,6 @@
           <div class="q-field">
             <label class="q-label">9. What time do you usually prefer to start your day?</label>
             <div class="q-budget-row q-start-time-row">
-              <input type="time" name="start_time_value" id="q-start-time-value" class="q-input q-budget-num" disabled>
               <select name="start_time_unit" id="q-start-time-unit" class="q-input q-select q-budget-unit q-start-time-unit">
                 <option value="early_morning">Early morning (7:30–9:00)</option>
                 <option value="morning">Morning (9:00–10:30)</option>
@@ -155,6 +153,7 @@
                 <option value="afternoon">Afternoon (12:00–14:00)</option>
                 <option value="custom">Custom (time)</option>
               </select>
+              <input type="time" name="start_time_value" id="q-start-time-value" class="q-input q-budget-num" disabled>
             </div>
           </div>
         </section>
@@ -364,20 +363,16 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // 问卷：Family / Friends Group / Other 时显示人数输入；仅 Family 时显示 1b
+  // 问卷：仅 Family 时显示 1b（儿童/老人）
   const groupTypeSelect = document.getElementById('q-group-type');
-  const numPeopleInput = document.getElementById('q-num-people');
   const field1b = document.getElementById('q-field-1b');
-  if (groupTypeSelect && numPeopleInput) {
+  if (groupTypeSelect && field1b) {
     groupTypeSelect.addEventListener('change', function() {
       const v = this.value;
-      numPeopleInput.style.display = (v === 'family' || v === 'friends_group' || v === 'other') ? 'block' : 'none';
-      if (field1b) {
-        field1b.style.display = v === 'family' ? 'flex' : 'none';
-        if (v !== 'family') {
-          document.getElementById('q-num-children').value = 0;
-          document.getElementById('q-num-seniors').value = 0;
-        }
+      field1b.style.display = v === 'family' ? 'flex' : 'none';
+      if (v !== 'family') {
+        document.getElementById('q-num-children').value = 0;
+        document.getElementById('q-num-seniors').value = 0;
       }
     });
   }
@@ -475,7 +470,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const errEl = document.getElementById('q-form-error');
     const errors = [];
     const groupType = document.getElementById('q-group-type')?.value;
-    const numPeople = document.getElementById('q-num-people')?.value?.trim();
     const budgetUnit = document.getElementById('q-budget-unit')?.value;
     const budgetVal = document.getElementById('q-budget-value')?.value?.trim();
     const visitDate = document.getElementById('q-visit-date')?.value;
@@ -489,8 +483,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const foodPref = document.querySelectorAll('input[name="food_preference"]:checked');
     const foodOther = document.getElementById('q-food-preference-other')?.value?.trim();
 
-    if (!groupType) errors.push('Q1: Please select how many people are traveling.');
-    if (['family','friends_group','other'].includes(groupType) && !numPeople) errors.push('Q1: Please enter the number of people.');
+    if (!groupType) errors.push('Q1: Please select how you will be traveling.');
     if (!visitDate) errors.push('Q2: Please select your visit start date.');
     if (visitDate) {
       const today = new Date().toISOString().slice(0, 10);

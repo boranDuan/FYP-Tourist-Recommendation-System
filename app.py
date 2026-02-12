@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from mysql import get_database_config, db, User, Favorite, Trip, TripPreference, POI, Filter
 from datetime import datetime, date
 import os
+import re
 import webbrowser
 import math
 from preference_matching import calculate_poi_score
@@ -285,11 +286,7 @@ def validate_questionnaire_data(data):
     food_preference = data.get("food_preference") or []
 
     if not group_type:
-        errors.append("Q1: Please select how many people are traveling.")
-    if group_type in ("family", "friends_group", "other"):
-        np = num_people if isinstance(num_people, (int, float)) else (num_people and str(num_people).strip())
-        if not np or (isinstance(np, str) and not np) or (isinstance(np, (int, float)) and int(np) < 1):
-            errors.append("Q1: Please enter the number of people.")
+        errors.append("Q1: Please select how you will be traveling.")
     if budget_unit == "custom":
         if not (budget_value and str(budget_value).strip()):
             errors.append("Q3: Please enter your custom budget amount.")
@@ -423,6 +420,15 @@ def trip_create():
 
 # ========== Preference Matching：按兴趣为 Trip 返回候选 POI ==========
 
+def _resolve_specific_places_to_poi_ids(specific_places_text, gmaps_client=None):
+    """Parse specific_places into poi_ids (Google-first resolver in preference_matching)."""
+    from preference_matching import resolve_specific_places_to_poi_ids_and_names
+    ids, _ = resolve_specific_places_to_poi_ids_and_names(
+        specific_places_text, POI, db, gmaps_client=gmaps_client
+    )
+    return ids
+
+
 @app.route("/api/trips/<int:trip_id>/candidates", methods=["GET"])
 def get_interest_ranked_pois_for_trip(trip_id):
     """根据 TripPreference.interests 为指定 Trip 返回按兴趣排序的候选 POI 列表。"""
@@ -493,15 +499,15 @@ def get_interest_ranked_pois_for_trip(trip_id):
                 "price_level": poi.price_level,
             })
 
-        # 若有儿童或老人，做 Step0 硬性人群过滤
+        # Google Maps client（用于 Step0 人群过滤与 specific_places 解析）
+        try:
+            import googlemaps
+            gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
+        except Exception:
+            gmaps = None
         num_children = (pref.num_children or 0) if pref else 0
         num_seniors = (pref.num_seniors or 0) if pref else 0
         if num_children > 0 or num_seniors > 0:
-            try:
-                import googlemaps
-                gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
-            except Exception:
-                gmaps = None
             pois_data = step0_hard_filter(pois_data, pref, gmaps=gmaps)
 
         # 第七题 Avoid 过滤：根据 avoid 输入匹配 filter，删除命中 POI
@@ -510,23 +516,54 @@ def get_interest_ranked_pois_for_trip(trip_id):
             all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
             pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
 
-        pois_data = pois_data[:limit]
+        # Must-visit (specific_places): 单独解析，保证永远在候选池中（优先 Google 地图）
+        must_visit_ids = _resolve_specific_places_to_poi_ids(getattr(pref, "specific_places", None) or "", gmaps_client=gmaps)
+        must_visit_poi_ids_set = set(must_visit_ids)
+        filtered_ids_set = {p["poi_id"] for p in pois_data}
 
-        # 返回时只暴露对外字段，去掉 filter_ids 等内部标记
-        out = []
+        must_visit_list = []
+        if must_visit_ids:
+            for pid in must_visit_ids:
+                poi = POI.query.get(pid)
+                if poi:
+                    must_visit_list.append({
+                        "poi_id": poi.poi_id,
+                        "name": poi.name,
+                        "score": None,
+                        "latitude": poi.latitude,
+                        "longitude": poi.longitude,
+                        "tags": poi.tags,
+                        "rating": poi.rating,
+                        "price_level": poi.price_level,
+                    })
+
+        # final_candidate_pool = union(filtered_pois, must_visit_list); must_visit 在前
+        final_pois = list(must_visit_list)
         for p in pois_data:
+            if p["poi_id"] not in must_visit_poi_ids_set:
+                final_pois.append(p)
+        final_pois = final_pois[:limit]
+
+        # 返回时只暴露对外字段
+        out = []
+        for p in final_pois:
             out.append({
                 "poi_id": p["poi_id"],
                 "name": p["name"],
-                "score": p["score"],
+                "score": p.get("score"),
                 "latitude": p["latitude"],
                 "longitude": p["longitude"],
-                "tags": p["tags"],
+                "tags": p.get("tags"),
                 "rating": p.get("rating"),
                 "price_level": p.get("price_level"),
             })
 
-        return jsonify({"success": True, "trip_id": trip_id, "pois": out}), 200
+        return jsonify({
+            "success": True,
+            "trip_id": trip_id,
+            "pois": out,
+            "must_visit_ids": must_visit_ids,
+        }), 200
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

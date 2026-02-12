@@ -22,7 +22,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from flask import Flask
 from mysql import get_database_config, db, POI, TripPreference, Filter
-from preference_matching import calculate_poi_score
+from preference_matching import calculate_poi_score, resolve_specific_places_to_poi_ids_and_names
 from rule_based_filtering import step0_hard_filter, apply_avoid_filter
 
 
@@ -69,6 +69,24 @@ def run(trip_id=None, limit=None):
             nc = (pref.num_children or 0) if hasattr(pref, "num_children") else 0
             ns = (pref.num_seniors or 0) if hasattr(pref, "num_seniors") else 0
             print(f"num_children={nc}, num_seniors={ns}")
+            must_visit_raw = (getattr(pref, "specific_places", None) or "").strip()
+            if must_visit_raw:
+                try:
+                    import os
+                    import googlemaps
+                    gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
+                except Exception:
+                    gmaps = None
+                _, display_pairs = resolve_specific_places_to_poi_ids_and_names(
+                    must_visit_raw, POI, db, gmaps_client=gmaps
+                )
+                for raw, resolved in display_pairs:
+                    if resolved == "(unresolved)":
+                        print(f"Must visit place: {raw} (unresolved)")
+                    else:
+                        print(f"Must visit place: {resolved}")
+            else:
+                print("Must visit place: (none)")
         else:
             print("No TripPreference in DB, using default interests for demo")
             interests = {"museum": 0.5, "culture": 0.5, "nature": 0.0, "shopping": 0.0, "nightlife": 0.0}
