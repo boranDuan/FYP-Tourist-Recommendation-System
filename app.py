@@ -7,7 +7,7 @@ import re
 import webbrowser
 import math
 from preference_matching import calculate_poi_score
-from rule_based_filtering import step0_hard_filter, apply_avoid_filter
+from rule_based_filtering import apply_avoid_filter
 
 load_dotenv()
 
@@ -484,7 +484,7 @@ def get_interest_ranked_pois_for_trip(trip_id):
 
         scored.sort(key=lambda x: x[1], reverse=True)
 
-        # 构建带 filter_ids 的列表，供 Rule-based Filtering 使用
+        # 构建带 filter_ids 的列表；含 Step0 缓存字段（suitable_for_children / suitable_for_seniors）
         pois_data = []
         for poi, score in scored:
             pois_data.append({
@@ -497,9 +497,11 @@ def get_interest_ranked_pois_for_trip(trip_id):
                 "tags": poi.tags,
                 "rating": poi.rating,
                 "price_level": poi.price_level,
+                "suitable_for_children": getattr(poi, "suitable_for_children", None),
+                "suitable_for_seniors": getattr(poi, "suitable_for_seniors", None),
             })
 
-        # Google Maps client（用于 Step0 人群过滤与 specific_places 解析）
+        # Google Maps client（仅用于 specific_places 解析）
         try:
             import googlemaps
             gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
@@ -507,8 +509,13 @@ def get_interest_ranked_pois_for_trip(trip_id):
             gmaps = None
         num_children = (pref.num_children or 0) if pref else 0
         num_seniors = (pref.num_seniors or 0) if pref else 0
+        # Step0 人口适配：用缓存字段过滤，不再实时调用 API（NULL 视为通过，避免未 backfill 时误删）
         if num_children > 0 or num_seniors > 0:
-            pois_data = step0_hard_filter(pois_data, pref, gmaps=gmaps)
+            pois_data = [
+                p for p in pois_data
+                if (num_children == 0 or p.get("suitable_for_children") is True or p.get("suitable_for_children") is None)
+                and (num_seniors == 0 or p.get("suitable_for_seniors") is True or p.get("suitable_for_seniors") is None)
+            ]
 
         # 第七题 Avoid 过滤：根据 avoid 输入匹配 filter，删除命中 POI
         avoid_list = pref.avoid if pref and pref.avoid and isinstance(pref.avoid, list) else []

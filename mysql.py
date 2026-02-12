@@ -80,6 +80,8 @@ class POI(db.Model):
     tags = db.Column(db.Text, nullable=True)
     url = db.Column(db.String(512), nullable=True)
     photos = db.Column(db.Text, nullable=True)
+    suitable_for_children = db.Column(db.Boolean, nullable=True, default=None)  # Step0 缓存：None=未计算，True/False=已计算
+    suitable_for_seniors = db.Column(db.Boolean, nullable=True, default=None)
     filters = db.relationship('Filter', secondary=poi_filter_association, back_populates='pois', lazy='joined')
 
     def update_from_dict(self, data: dict):
@@ -98,6 +100,19 @@ class Filter(db.Model):
     filter_name = db.Column(db.String(255), unique=True, nullable=False, index=True)
 
     pois = db.relationship('POI', secondary=poi_filter_association, back_populates='filters', lazy='dynamic')
+
+
+class MustVisitCache(db.Model):
+    """must-visit 解析缓存：同一 user_input 直接返回已解析的 poi_id / resolved_name，避免重复调 API"""
+    __tablename__ = 'must_visit_cache'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    poi_id = db.Column(db.Integer, db.ForeignKey('poi.poi_id', ondelete='CASCADE'), nullable=True)  # 未匹配时为 NULL
+    user_input = db.Column(db.String(255), nullable=False, index=True)  # 用户输入的文本，如 "UCD"
+    resolved_name = db.Column(db.String(255), nullable=True)  # 匹配到的 POI 名称或 "(unresolved)"
+    google_place_id = db.Column(db.String(128), nullable=True)  # 若用过 Google API 则缓存
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
 
 
 class Favorite(db.Model):

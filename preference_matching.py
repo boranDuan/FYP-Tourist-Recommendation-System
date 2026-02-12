@@ -1,6 +1,6 @@
 """
 Preference Matching 模块：根据用户 interests 权重为 POI 计算兴趣相关性得分；
-以及 specific_places 解析为 must-visit POI（优先用 Google 地图，fallback 为 contains/fuzzy）。
+以及 specific_places 解析为 must-visit POI（查 must_visit_cache → Google 地图 → contains/fuzzy，并写回缓存）。
 """
 import re
 
@@ -8,6 +8,12 @@ try:
     from rapidfuzz import fuzz, process
 except ImportError:
     fuzz = process = None
+
+
+def _get_must_visit_cache_model():
+    """Lazy import 避免与 mysql 循环依赖"""
+    from mysql import MustVisitCache
+    return MustVisitCache
 
 # interest_key -> filter_id 列表（POI 带任一 filter_id 即属于该 interest 类型）
 INTEREST_TO_FILTER_IDS = {
@@ -53,13 +59,13 @@ def calculate_poi_score(poi_id, poi_filter_ids, interests):
 def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model, db_session, gmaps_client=None):
     """
     将 specific_places 文本解析为 (poi_ids, [(raw_token, resolved_name), ...])。
-    优先用 Google 地图 Find Place 得到规范名称，再在本地 POI 表中按名称匹配 poi_id；
-    无 gmaps 或 API 失败时 fallback 为本地 contains + fuzzy。
+    先查 must_visit_cache；未命中则 Google 地图 → 本地 contains/fuzzy，并写回缓存。
     """
     if not specific_places_text or not isinstance(specific_places_text, str):
         return [], []
     POI = poi_model
     db = db_session
+    MustVisitCache = _get_must_visit_cache_model()
     tokens = re.split(r"[,;\n]+", specific_places_text)
     seen = set()
     result_ids = []
@@ -88,24 +94,53 @@ def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model
                 return rows[idx][1], rows[idx][0]
         return None, None
 
+    def upsert_cache(user_input, poi_id, resolved_name, google_place_id=None):
+        row = db_session.query(MustVisitCache).filter_by(user_input=user_input).first()
+        if row:
+            row.poi_id = poi_id
+            row.resolved_name = resolved_name
+            row.google_place_id = google_place_id
+        else:
+            db_session.add(MustVisitCache(
+                user_input=user_input,
+                poi_id=poi_id,
+                resolved_name=resolved_name,
+                google_place_id=google_place_id,
+            ))
+
     for t in tokens:
         token = t.strip()
         if not token or len(token) < 3:
             continue
         resolved_name = None
         poi_id = None
+        google_place_id = None
 
+        # 1) 先查缓存
+        cached = db_session.query(MustVisitCache).filter_by(user_input=token).first()
+        if cached is not None:
+            if cached.poi_id is not None and cached.poi_id not in seen:
+                seen.add(cached.poi_id)
+                result_ids.append(cached.poi_id)
+            display_pairs.append((token, "(unresolved)" if cached.poi_id is None else (cached.resolved_name or token)))
+            continue
+
+        # 2) 未命中：Google 或 fallback
         if gmaps_client:
             try:
                 query = f"{token} Dublin"
-                place = gmaps_client.find_place(query, "textquery", fields=["name"])
+                place = gmaps_client.find_place(query, "textquery", fields=["name", "place_id"])
                 candidates = place.get("candidates") or []
-                if candidates and candidates[0].get("name"):
-                    google_name = candidates[0]["name"]
-                    poi = match_poi_by_name(google_name)
-                    if poi and poi.poi_id not in seen:
-                        poi_id = poi.poi_id
-                        resolved_name = poi.name
+                if candidates:
+                    c0 = candidates[0]
+                    google_name = c0.get("name")
+                    if c0.get("place_id"):
+                        google_place_id = c0["place_id"]
+                    if google_name:
+                        poi = match_poi_by_name(google_name)
+                        if poi and poi.poi_id not in seen:
+                            poi_id = poi.poi_id
+                            resolved_name = poi.name
             except Exception:
                 pass
 
@@ -118,5 +153,13 @@ def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model
             display_pairs.append((token, resolved_name or token))
         else:
             display_pairs.append((token, "(unresolved)"))
+
+        # 3) 写回缓存
+        upsert_cache(token, poi_id, resolved_name or "(unresolved)", google_place_id)
+
+    try:
+        db_session.commit()
+    except Exception:
+        db_session.rollback()
 
     return result_ids, display_pairs
