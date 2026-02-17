@@ -30,7 +30,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from app import app
 from mysql import db, POI, Trip, TripPreference, Filter
-from preference_matching import calculate_poi_score
+from preference_matching import calculate_poi_score, filter_unwanted_pois
 from rule_based_filtering import step0_hard_filter, apply_avoid_filter
 
 
@@ -125,6 +125,7 @@ def get_poi_candidates_for_trip(trip_id):
         all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
         pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
 
+    pois_data = filter_unwanted_pois(pois_data)
     return [(p["poi_obj"], p["score"]) for p in pois_data], pref
 
 
@@ -237,7 +238,7 @@ def main():
     parser.add_argument(
         "--score_threshold",
         type=float,
-        default=0.6,
+        default=0.5,
         help="Minimum interest score (default: 0.6)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Preview without fetching")

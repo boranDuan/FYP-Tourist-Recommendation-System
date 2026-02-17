@@ -9,6 +9,7 @@ import math
 from preference_matching import (
     calculate_poi_score,
     calculate_final_score_with_popularity,
+    filter_unwanted_pois,
     get_daily_poi_capacity,
 )
 from itinerary import (
@@ -127,7 +128,7 @@ def logout():
 def get_user():
     """获取当前登录用户信息"""
     if 'user_id' in session:
-        user = User.query.get(session['user_id'])
+        user = db.session.get(User, session['user_id'])
         if user:
             return jsonify({'success': True, 'user': user.to_dict()}), 200
     return jsonify({'success': False, 'user': None}), 200
@@ -421,11 +422,9 @@ def trip_create():
         )
         db.session.add(pref)
         db.session.commit()
-        # 问卷提交后打印行程摘要到终端
+        # 问卷提交后生成行程（不再打印到终端，避免 zsh 误解析含括号的输出）
         try:
-            result = _compute_candidates_and_itinerary(pref)
-            if result and result.get("summary"):
-                print("\n" + "=" * 50 + "\n" + result["summary"] + "\n" + "=" * 50)
+            _compute_candidates_and_itinerary(pref)
         except Exception:
             pass
         return jsonify({"success": True, "trip_id": trip.trip_id}), 201
@@ -523,6 +522,8 @@ def _compute_candidates_and_itinerary(pref, limit=200):
         all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
         pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
 
+    pois_data = filter_unwanted_pois(pois_data)
+
     # Must-visit：直接用 Google Places 数据，不匹配本地 DB
     from preference_matching import resolve_specific_places_to_google_data
     google_must_visits = resolve_specific_places_to_google_data(
@@ -597,7 +598,7 @@ def get_interest_ranked_pois_for_trip(trip_id):
     if not user_id:
         return jsonify({"success": False, "message": "Please log in first."}), 401
 
-    trip = Trip.query.get(trip_id)
+    trip = db.session.get(Trip, trip_id)
     if not trip:
         return jsonify({"success": False, "message": "Trip not found."}), 404
     if trip.user_id != user_id:
@@ -615,10 +616,6 @@ def get_interest_ranked_pois_for_trip(trip_id):
         result = _compute_candidates_and_itinerary(pref, limit=limit)
         if not result:
             return jsonify({"success": True, "trip_id": trip_id, "pois": []}), 200
-
-        summary = result.get("summary")
-        if summary:
-            print("\n" + "=" * 50 + "\n" + summary + "\n" + "=" * 50)
 
         return jsonify({
             "success": True,

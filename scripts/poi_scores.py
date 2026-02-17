@@ -23,10 +23,13 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from flask import Flask
 from mysql import get_database_config, db, POI, TripPreference, Filter
-from preference_matching import calculate_poi_score, resolve_specific_places_to_poi_ids_and_names
+from preference_matching import (
+    calculate_final_score_with_popularity,
+    calculate_poi_score,
+    filter_unwanted_pois,
+    resolve_specific_places_to_poi_ids_and_names,
+)
 from rule_based_filtering import step0_hard_filter, apply_avoid_filter
-from preference_matching import calculate_poi_score, resolve_specific_places_to_poi_ids_and_names
-from preference_matching import calculate_final_score_with_popularity  # 新加的
 
 def create_app():
     app = Flask(__name__)
@@ -175,6 +178,7 @@ def run(trip_id=None, limit=None):
             pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters, debug=True)
         else:
             print("Skipped Rule-based avoid filter (Step1)")
+        pois_data = filter_unwanted_pois(pois_data)
         count_after_avoid_filter = len(pois_data)
 
         # 只展示前 limit 条，但总结用全量数字

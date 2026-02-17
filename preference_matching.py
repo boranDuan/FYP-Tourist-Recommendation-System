@@ -24,6 +24,46 @@ PACE_TO_DAILY_POI = {
     "intensive": 6,
 }
 
+# 不推荐的 POI 类型（filter_id）与名称黑名单
+EXCLUDED_FILTER_IDS = [
+    61,   # Sports Venues - 体育场馆
+    88,   # Race Course - 赛马场
+    20,   # Golf
+    21,   # Golf Course
+    92,   # Pitch and Putt
+    31,   # Coach - 长途汽车（非景点）
+    33,   # Transport - 交通（非景点）
+    96,   # Casinos - 赌场
+    72,   # Fitness and Leisure - 健身房
+    76,   # Swimming Pool - 游泳池
+    60,   # General - 太模糊
+]
+EXCLUDED_POI_NAMES = [
+    "Croke Park",
+    "Aviva Stadium",
+    "RDS Arena",
+    "Lansdowne Road",
+]
+
+
+def filter_unwanted_pois(pois):
+    """
+    过滤不受欢迎的 POI（体育场馆等）。
+    - 基于 filter_id
+    - 基于名称黑名单
+    """
+    filtered = []
+    for poi in pois:
+        poi_filter_ids = poi.get("filter_ids") or []
+        poi_name = (poi.get("name") or "").strip()
+        if any(fid in EXCLUDED_FILTER_IDS for fid in poi_filter_ids):
+            continue
+        if any(excluded in poi_name for excluded in EXCLUDED_POI_NAMES):
+            continue
+        filtered.append(poi)
+    return filtered
+
+
 # interest_key -> filter_id 列表（POI 带任一 filter_id 即属于该 interest 类型）
 INTEREST_TO_FILTER_IDS = {
     "museum": [19, 37, 24, 25, 26, 23, 41, 52, 80, 65],
