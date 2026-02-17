@@ -1,7 +1,9 @@
 """
 Preference Matching 模块：根据用户 interests 权重为 POI 计算兴趣相关性得分；
 以及 specific_places 解析为 must-visit POI（查 must_visit_cache → Google 地图 → contains/fuzzy，并写回缓存）。
+支持 Google 知名度评分（rating, user_ratings_total）融入综合得分。
 """
+import math
 import re
 
 try:
@@ -24,43 +26,86 @@ PACE_TO_DAILY_POI = {
 
 # interest_key -> filter_id 列表（POI 带任一 filter_id 即属于该 interest 类型）
 INTEREST_TO_FILTER_IDS = {
-    "museum": [19, 37, 43, 18, 24, 25, 26, 23, 41, 52, 80, 65],
+    "museum": [19, 37, 24, 25, 26, 23, 41, 52, 80, 65],
     "nature": [75, 66, 89, 11, 74, 38, 39, 22, 90, 67, 95],
-    "culture": [40, 73, 79, 84, 94, 14, 82, 17, 85],
+    "culture": [40, 73, 79, 84, 94, 14, 82, 85, 43, 18, 24, 25, 26, 23, 41, 19, 37, 80],
     "shopping": [15, 12, 28, 44, 17],
     "nightlife": [10, 96],
 }
 
 
+def calculate_popularity_score(rating, ratings_total):
+    """
+    知名度评分（0–1）。
+    评价数量比评分更重要：4.6⭐ 3000 评价 > 4.8⭐ 300 评价。
+    权重：评价数 80%，评分 20%。
+    """
+    if not rating or ratings_total is None or ratings_total == 0:
+        return 0.0
+    try:
+        rating = float(rating)
+        ratings_total = int(ratings_total)
+    except (TypeError, ValueError):
+        return 0.0
+    if ratings_total <= 0:
+        return 0.0
+    ratings_log = math.log10(max(1, ratings_total))
+    ratings_score = min(1.0, ratings_log / 5.0)
+    rating_score = max(0.0, min(1.0, (rating - 4.0) / 1.0))
+    return ratings_score * 0.8 + rating_score * 0.2
+
+
+def calculate_final_score_with_popularity(interest_score, google_rating=None, google_ratings_total=None):
+    """
+    综合评分 = 兴趣匹配 × (1 + 知名度加成)
+    无 Google 数据时，保留 70%。
+    """
+    if not google_ratings_total or google_ratings_total == 0:
+        return interest_score * 0.7
+    popularity_score = calculate_popularity_score(google_rating, google_ratings_total)
+    final_score = interest_score * (1.0 + popularity_score * 0.8)
+    return min(1.0, final_score)
+
+
 def calculate_poi_score(poi_id, poi_filter_ids, interests):
     """
-    根据 POI 的 filter_id 与用户 interests 权重，计算兴趣相关性得分。
-
-    Args:
-        poi_id: POI ID（当前未使用，预留）
-        poi_filter_ids: 该 POI 关联的 filter_id 列表
-        interests: 用户 interests 权重对象，如 {"museum": 0.5, "culture": 0.5, "nature": 0.0, ...}
-
-    Returns:
-        float: 兴趣得分
+    饱和模型：score = 1 - Π(1 - weight_i)
+    避免多维度匹配导致分数虚高
     """
-    score = 0.0
-
     if not interests or not isinstance(interests, dict):
-        return score
-
+        return 0.0
+    
     poi_filter_ids = set(poi_filter_ids or [])
-
+    if not poi_filter_ids:
+        return 0.0
+    
+    # 收集所有匹配的兴趣权重
+    matched_weights = []
+    
     for interest_key, weight in interests.items():
         if not weight or float(weight) <= 0:
             continue
+        
         related_filters = INTEREST_TO_FILTER_IDS.get(interest_key)
         if not related_filters:
-            continue  # 如 "other" 无映射，跳过
+            continue
+        
+        # 检查是否有filter匹配
         if any(fid in related_filters for fid in poi_filter_ids):
-            score += float(weight)
-
+            matched_weights.append(float(weight))
+    
+    if not matched_weights:
+        return 0.0
+    
+    # 饱和模型公式: score = 1 - Π(1 - w_i)
+    product = 1.0
+    for w in matched_weights:
+        product *= (1.0 - w)
+    
+    score = 1.0 - product
+    
     return score
+
 
 
 def get_daily_poi_capacity(pace, num_children=0, num_seniors=0):

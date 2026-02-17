@@ -82,6 +82,11 @@ class POI(db.Model):
     photos = db.Column(db.Text, nullable=True)
     suitable_for_children = db.Column(db.Boolean, nullable=True, default=None)  # Step0 缓存：None=未计算，True/False=已计算
     suitable_for_seniors = db.Column(db.Boolean, nullable=True, default=None)
+    # Google Places 知名度数据（批量获取后缓存）
+    google_place_id = db.Column(db.String(255), nullable=True, index=True)
+    google_rating = db.Column(db.Float, nullable=True)
+    google_ratings_total = db.Column(db.Integer, nullable=True)
+    google_data_fetched_at = db.Column(db.DateTime, nullable=True)
     filters = db.relationship('Filter', secondary=poi_filter_association, back_populates='pois', lazy='joined')
 
     def update_from_dict(self, data: dict):

@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -24,7 +25,8 @@ from flask import Flask
 from mysql import get_database_config, db, POI, TripPreference, Filter
 from preference_matching import calculate_poi_score, resolve_specific_places_to_poi_ids_and_names
 from rule_based_filtering import step0_hard_filter, apply_avoid_filter
-
+from preference_matching import calculate_poi_score, resolve_specific_places_to_poi_ids_and_names
+from preference_matching import calculate_final_score_with_popularity  # 新加的
 
 def create_app():
     app = Flask(__name__)
@@ -125,7 +127,12 @@ def run(trip_id=None, limit=None):
                 continue
 
             poi_filter_ids = [f.filter_id for f in poi.filters]
-            score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
+            interest_score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
+            score = calculate_final_score_with_popularity(
+                interest_score,
+                getattr(poi, 'google_rating', None),
+                getattr(poi, 'google_ratings_total', None)
+            )
             results.append((poi, score))
 
         results.sort(key=lambda x: x[1], reverse=True)

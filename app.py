@@ -6,8 +6,16 @@ import os
 import re
 import webbrowser
 import math
-from preference_matching import calculate_poi_score, get_daily_poi_capacity
-from itinerary import allocate_pois_to_days_v3_with_must_visit, format_itinerary_summary
+from preference_matching import (
+    calculate_poi_score,
+    calculate_final_score_with_popularity,
+    get_daily_poi_capacity,
+)
+from itinerary import (
+    allocate_pois_to_days_v3_with_must_visit,
+    allocate_pois_to_days_v4_popularity_first,
+    format_itinerary_summary,
+)
 from rule_based_filtering import apply_avoid_filter
 
 load_dotenv()
@@ -468,8 +476,13 @@ def _compute_candidates_and_itinerary(pref, limit=200):
         if not in_county and not in_radius:
             continue
         poi_filter_ids = [f.filter_id for f in poi.filters]
-        score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
-        if score > 0:
+        interest_score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
+        if interest_score > 0:
+            score = calculate_final_score_with_popularity(
+                interest_score,
+                getattr(poi, "google_rating", None),
+                getattr(poi, "google_ratings_total", None),
+            )
             scored.append((poi, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -548,9 +561,9 @@ def _compute_candidates_and_itinerary(pref, limit=200):
 
     daily_capacity = get_daily_poi_capacity(pref.pace, pref.num_children or 0, pref.num_seniors or 0)
     trip_days = _get_trip_days(pref)
-    day_plans, warnings = allocate_pois_to_days_v3_with_must_visit(
-        final_pois, google_place_ids, pref, trip_days
-    )
+    use_v4 = os.getenv("USE_V4_ALLOCATION", "true").lower() in ("1", "true", "yes")
+    allocator = allocate_pois_to_days_v4_popularity_first if use_v4 else allocate_pois_to_days_v3_with_must_visit
+    day_plans, warnings = allocator(final_pois, google_place_ids, pref, trip_days)
     summary = format_itinerary_summary(day_plans, trip_days)
 
     return {
