@@ -6,7 +6,8 @@ import os
 import re
 import webbrowser
 import math
-from preference_matching import calculate_poi_score
+from preference_matching import calculate_poi_score, get_daily_poi_capacity
+from itinerary import allocate_pois_to_days_v3_with_must_visit, format_itinerary_summary
 from rule_based_filtering import apply_avoid_filter
 
 load_dotenv()
@@ -412,6 +413,13 @@ def trip_create():
         )
         db.session.add(pref)
         db.session.commit()
+        # 问卷提交后打印行程摘要到终端
+        try:
+            result = _compute_candidates_and_itinerary(pref)
+            if result and result.get("summary"):
+                print("\n" + "=" * 50 + "\n" + result["summary"] + "\n" + "=" * 50)
+        except Exception:
+            pass
         return jsonify({"success": True, "trip_id": trip.trip_id}), 201
     except Exception as e:
         db.session.rollback()
@@ -420,13 +428,153 @@ def trip_create():
 
 # ========== Preference Matching：按兴趣为 Trip 返回候选 POI ==========
 
-def _resolve_specific_places_to_poi_ids(specific_places_text, gmaps_client=None):
-    """Parse specific_places into poi_ids (Google-first resolver in preference_matching)."""
-    from preference_matching import resolve_specific_places_to_poi_ids_and_names
-    ids, _ = resolve_specific_places_to_poi_ids_and_names(
-        specific_places_text, POI, db, gmaps_client=gmaps_client
+def _get_trip_days(preference):
+    """根据 visit_date 与 visit_date_end 计算行程天数。"""
+    start = getattr(preference, 'visit_date', None)
+    end = getattr(preference, 'visit_date_end', None)
+    if not start or not end:
+        return 3
+    try:
+        days = (end - start).days + 1
+        return max(1, days)
+    except (TypeError, AttributeError):
+        return 3
+
+
+def _compute_candidates_and_itinerary(pref, limit=200):
+    """
+    根据 TripPreference 计算候选 POI 与分天行程。
+    若无正权重兴趣返回 None，否则返回 dict(out, must_visit_ids, daily_capacity, day_plans, warnings, summary)。
+    """
+    interests = _normalize_interests(pref.interests)
+    if not interests or not any(v and float(v) > 0 for v in interests.values()):
+        return None
+
+    DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON = 53.3498, -6.2603
+    DUBLIN_RADIUS_KM = 30.0
+    DUBLIN_COUNTIES = {"Dublin", "Dublin City", "Dún Laoghaire-Rathdown", "Fingal", "South Dublin"}
+
+    pois = POI.query.all()
+    scored = []
+    for poi in pois:
+        in_county = getattr(poi, "county", None) in DUBLIN_COUNTIES
+        in_radius = False
+        if poi.latitude is not None and poi.longitude is not None:
+            try:
+                dist_km = _haversine_km(float(poi.latitude), float(poi.longitude), DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON)
+                in_radius = dist_km <= DUBLIN_RADIUS_KM
+            except (TypeError, ValueError):
+                in_radius = False
+        if not in_county and not in_radius:
+            continue
+        poi_filter_ids = [f.filter_id for f in poi.filters]
+        score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
+        if score > 0:
+            scored.append((poi, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    pois_data = []
+    for poi, score in scored:
+        pois_data.append({
+            "poi_id": poi.poi_id,
+            "name": poi.name,
+            "score": score,
+            "filter_ids": [f.filter_id for f in poi.filters],
+            "latitude": poi.latitude,
+            "longitude": poi.longitude,
+            "tags": poi.tags,
+            "rating": poi.rating,
+            "price_level": poi.price_level,
+            "suitable_for_children": getattr(poi, "suitable_for_children", None),
+            "suitable_for_seniors": getattr(poi, "suitable_for_seniors", None),
+        })
+
+    try:
+        import googlemaps
+        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
+    except Exception:
+        gmaps = None
+
+    num_children = (pref.num_children or 0) if pref else 0
+    num_seniors = (pref.num_seniors or 0) if pref else 0
+    if num_children > 0 or num_seniors > 0:
+        pois_data = [
+            p for p in pois_data
+            if (num_children == 0 or p.get("suitable_for_children") is True or p.get("suitable_for_children") is None)
+            and (num_seniors == 0 or p.get("suitable_for_seniors") is True or p.get("suitable_for_seniors") is None)
+        ]
+
+    avoid_list = pref.avoid if pref and pref.avoid and isinstance(pref.avoid, list) else []
+    if avoid_list:
+        all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
+        pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
+
+    # Must-visit：直接用 Google Places 数据，不匹配本地 DB
+    from preference_matching import resolve_specific_places_to_google_data
+    google_must_visits = resolve_specific_places_to_google_data(
+        getattr(pref, "specific_places", None) or "", gmaps_client=gmaps
     )
-    return ids
+    # 补全 allocate/get_poi_duration 所需字段
+    for g in google_must_visits:
+        g.setdefault("filter_ids", [])
+        g.setdefault("score", None)
+        g["source"] = "google"
+
+    final_pois = list(google_must_visits)
+    for p in pois_data:
+        if any(_is_same_location(p, g) for g in google_must_visits):
+            continue
+        p["source"] = "local"
+        final_pois.append(p)
+    final_pois = final_pois[:limit]
+
+    google_place_ids = [g["place_id"] for g in google_must_visits]
+
+    out = []
+    for p in final_pois:
+        out.append({
+            "poi_id": p.get("poi_id"),
+            "place_id": p.get("place_id"),
+            "name": p.get("name"),
+            "score": p.get("score"),
+            "latitude": p.get("latitude"),
+            "longitude": p.get("longitude"),
+            "tags": p.get("tags"),
+            "rating": p.get("rating"),
+            "price_level": p.get("price_level"),
+            "source": p.get("source"),
+        })
+
+    daily_capacity = get_daily_poi_capacity(pref.pace, pref.num_children or 0, pref.num_seniors or 0)
+    trip_days = _get_trip_days(pref)
+    day_plans, warnings = allocate_pois_to_days_v3_with_must_visit(
+        final_pois, google_place_ids, pref, trip_days
+    )
+    summary = format_itinerary_summary(day_plans, trip_days)
+
+    return {
+        "out": out,
+        "must_visit_ids": google_place_ids,
+        "google_must_visits": google_must_visits,
+        "daily_capacity": daily_capacity,
+        "day_plans": day_plans,
+        "warnings": warnings,
+        "summary": summary,
+    }
+
+
+def _is_same_location(poi1, poi2, threshold_km=0.1):
+    """判断两个 POI 是否同一地点（基于距离）。"""
+    lat1, lng1 = poi1.get("latitude"), poi1.get("longitude")
+    lat2, lng2 = poi2.get("latitude"), poi2.get("longitude")
+    if None in (lat1, lng1, lat2, lng2):
+        return False
+    try:
+        dist = _haversine_km(float(lat1), float(lng1), float(lat2), float(lng2))
+        return dist < threshold_km
+    except (TypeError, ValueError):
+        return False
 
 
 @app.route("/api/trips/<int:trip_id>/candidates", methods=["GET"])
@@ -446,130 +594,28 @@ def get_interest_ranked_pois_for_trip(trip_id):
     if not pref:
         return jsonify({"success": True, "trip_id": trip_id, "pois": []}), 200
 
-    interests = _normalize_interests(pref.interests)
-    # 如果没有任何正权重兴趣，直接返回空列表
-    if not interests or not any(v and float(v) > 0 for v in interests.values()):
-        return jsonify({"success": True, "trip_id": trip_id, "pois": []}), 200
-
-    # 解析 limit 参数，默认 200
     limit = request.args.get("limit", default=200, type=int)
     if not limit or limit <= 0:
         limit = 200
 
     try:
-        # Dublin 中心点与半径（km）
-        DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON = 53.3498, -6.2603
-        DUBLIN_RADIUS_KM = 30.0
-        DUBLIN_COUNTIES = {"Dublin", "Dublin City", "Dún Laoghaire-Rathdown", "Fingal", "South Dublin"}
+        result = _compute_candidates_and_itinerary(pref, limit=limit)
+        if not result:
+            return jsonify({"success": True, "trip_id": trip_id, "pois": []}), 200
 
-        pois = POI.query.all()
-        scored = []
-        for poi in pois:
-            in_county = getattr(poi, "county", None) in DUBLIN_COUNTIES
-            in_radius = False
-            if poi.latitude is not None and poi.longitude is not None:
-                try:
-                    dist_km = _haversine_km(float(poi.latitude), float(poi.longitude), DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON)
-                    in_radius = dist_km <= DUBLIN_RADIUS_KM
-                except (TypeError, ValueError):
-                    in_radius = False
-
-            if not in_county and not in_radius:
-                continue
-
-            poi_filter_ids = [f.filter_id for f in poi.filters]
-            score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
-            if score > 0:
-                scored.append((poi, score))
-
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        # 构建带 filter_ids 的列表；含 Step0 缓存字段（suitable_for_children / suitable_for_seniors）
-        pois_data = []
-        for poi, score in scored:
-            pois_data.append({
-                "poi_id": poi.poi_id,
-                "name": poi.name,
-                "score": score,
-                "filter_ids": [f.filter_id for f in poi.filters],
-                "latitude": poi.latitude,
-                "longitude": poi.longitude,
-                "tags": poi.tags,
-                "rating": poi.rating,
-                "price_level": poi.price_level,
-                "suitable_for_children": getattr(poi, "suitable_for_children", None),
-                "suitable_for_seniors": getattr(poi, "suitable_for_seniors", None),
-            })
-
-        # Google Maps client（仅用于 specific_places 解析）
-        try:
-            import googlemaps
-            gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
-        except Exception:
-            gmaps = None
-        num_children = (pref.num_children or 0) if pref else 0
-        num_seniors = (pref.num_seniors or 0) if pref else 0
-        # Step0 人口适配：用缓存字段过滤，不再实时调用 API（NULL 视为通过，避免未 backfill 时误删）
-        if num_children > 0 or num_seniors > 0:
-            pois_data = [
-                p for p in pois_data
-                if (num_children == 0 or p.get("suitable_for_children") is True or p.get("suitable_for_children") is None)
-                and (num_seniors == 0 or p.get("suitable_for_seniors") is True or p.get("suitable_for_seniors") is None)
-            ]
-
-        # 第七题 Avoid 过滤：根据 avoid 输入匹配 filter，删除命中 POI
-        avoid_list = pref.avoid if pref and pref.avoid and isinstance(pref.avoid, list) else []
-        if avoid_list:
-            all_filters = [{"id": f.filter_id, "name": f.filter_name} for f in Filter.query.all()]
-            pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
-
-        # Must-visit (specific_places): 单独解析，保证永远在候选池中（优先 Google 地图）
-        must_visit_ids = _resolve_specific_places_to_poi_ids(getattr(pref, "specific_places", None) or "", gmaps_client=gmaps)
-        must_visit_poi_ids_set = set(must_visit_ids)
-        filtered_ids_set = {p["poi_id"] for p in pois_data}
-
-        must_visit_list = []
-        if must_visit_ids:
-            for pid in must_visit_ids:
-                poi = POI.query.get(pid)
-                if poi:
-                    must_visit_list.append({
-                        "poi_id": poi.poi_id,
-                        "name": poi.name,
-                        "score": None,
-                        "latitude": poi.latitude,
-                        "longitude": poi.longitude,
-                        "tags": poi.tags,
-                        "rating": poi.rating,
-                        "price_level": poi.price_level,
-                    })
-
-        # final_candidate_pool = union(filtered_pois, must_visit_list); must_visit 在前
-        final_pois = list(must_visit_list)
-        for p in pois_data:
-            if p["poi_id"] not in must_visit_poi_ids_set:
-                final_pois.append(p)
-        final_pois = final_pois[:limit]
-
-        # 返回时只暴露对外字段
-        out = []
-        for p in final_pois:
-            out.append({
-                "poi_id": p["poi_id"],
-                "name": p["name"],
-                "score": p.get("score"),
-                "latitude": p["latitude"],
-                "longitude": p["longitude"],
-                "tags": p.get("tags"),
-                "rating": p.get("rating"),
-                "price_level": p.get("price_level"),
-            })
+        summary = result.get("summary")
+        if summary:
+            print("\n" + "=" * 50 + "\n" + summary + "\n" + "=" * 50)
 
         return jsonify({
             "success": True,
             "trip_id": trip_id,
-            "pois": out,
-            "must_visit_ids": must_visit_ids,
+            "pois": result["out"],
+            "must_visit_ids": result["must_visit_ids"],
+            "google_must_visits": result.get("google_must_visits", []),
+            "daily_poi_capacity": result["daily_capacity"],
+            "day_plans": result["day_plans"],
+            "warnings": result["warnings"],
         }), 200
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500

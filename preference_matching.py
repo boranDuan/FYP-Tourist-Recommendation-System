@@ -15,6 +15,13 @@ def _get_must_visit_cache_model():
     from mysql import MustVisitCache
     return MustVisitCache
 
+# Pace → 每日 POI 数（不要写死在逻辑里）
+PACE_TO_DAILY_POI = {
+    "relaxed": 3,
+    "balanced": 4,
+    "intensive": 6,
+}
+
 # interest_key -> filter_id 列表（POI 带任一 filter_id 即属于该 interest 类型）
 INTEREST_TO_FILTER_IDS = {
     "museum": [19, 37, 43, 18, 24, 25, 26, 23, 41, 52, 80, 65],
@@ -54,6 +61,76 @@ def calculate_poi_score(poi_id, poi_filter_ids, interests):
             score += float(weight)
 
     return score
+
+
+def get_daily_poi_capacity(pace, num_children=0, num_seniors=0):
+    """
+    根据 pace 与人群修正得到每日 POI 容量。
+    带小孩或老人 → 节奏下降（capacity -= 1），最低 2。
+    """
+    base = PACE_TO_DAILY_POI.get(pace) if pace else PACE_TO_DAILY_POI.get("balanced")
+    if base is None:
+        base = PACE_TO_DAILY_POI["balanced"]
+    capacity = base
+    if (num_children or 0) > 0 or (num_seniors or 0) > 0:
+        capacity -= 1
+    return max(2, capacity)
+
+
+def resolve_specific_places_to_google_data(specific_places_text, gmaps_client=None):
+    """
+    将用户输入的 specific_places 用 Google Places API 解析，直接返回 Google 数据，不匹配本地 DB。
+    返回: [{"place_id": "...", "name": "...", "latitude": float, "longitude": float}, ...]
+    """
+    if not specific_places_text or not isinstance(specific_places_text, str) or not gmaps_client:
+        return []
+
+    tokens = re.split(r"[,;\n]+", specific_places_text)
+    result = []
+    seen_place_ids = set()
+
+    for t in tokens:
+        token = t.strip()
+        if not token or len(token) < 3:
+            continue
+        try:
+            query = f"{token} Dublin"
+            place = gmaps_client.find_place(
+                query, "textquery",
+                fields=["name", "place_id", "geometry"]
+            )
+            candidates = place.get("candidates") or []
+            if not candidates:
+                continue
+            c0 = candidates[0]
+            place_id = c0.get("place_id")
+            name = c0.get("name")
+            if not place_id:
+                continue
+            if place_id in seen_place_ids:
+                continue
+            seen_place_ids.add(place_id)
+
+            lat, lng = None, None
+            geom = c0.get("geometry")
+            if geom and isinstance(geom.get("location"), dict):
+                loc = geom["location"]
+                lat = loc.get("lat")
+                lng = loc.get("lng")
+
+            result.append({
+                "place_id": place_id,
+                "name": name or token,
+                "latitude": float(lat) if lat is not None else None,
+                "longitude": float(lng) if lng is not None else None,
+                "filter_ids": [],
+                "duration": 2.0,
+                "user_input": token,
+            })
+        except Exception:
+            continue
+
+    return result
 
 
 def resolve_specific_places_to_poi_ids_and_names(specific_places_text, poi_model, db_session, gmaps_client=None):
