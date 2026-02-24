@@ -264,6 +264,75 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function setBubbleHtmlContent(wrap, contentHtml) {
+    const bubble = wrap.querySelector('.ai-msg-bubble');
+    if (bubble) {
+      bubble.innerHTML = '';
+      const text = document.createElement('div');
+      text.className = 'ai-msg-text';
+      text.innerHTML = contentHtml;
+      bubble.appendChild(text);
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderItineraryHtml(dayPlans) {
+    if (!Array.isArray(dayPlans) || dayPlans.length === 0) {
+      return '<div class="ai-itinerary-empty">No itinerary available yet.</div>';
+    }
+    return dayPlans.map((plan, idx) => {
+      const pois = Array.isArray(plan.pois) ? plan.pois : [];
+      const must = pois.filter(p => p && p.is_must_visit);
+      const rec = pois.filter(p => p && !p.is_must_visit);
+      const mustHtml = must.length
+        ? '<div class="ai-itinerary-section-title">Must Visit</div><ul class="ai-itinerary-list">' +
+          must.map(p => '<li>' + escapeHtml(p.name || 'Unnamed POI') + '</li>').join('') +
+          '</ul>'
+        : '';
+      const recHtml = rec.length
+        ? '<div class="ai-itinerary-section-title">Recommended</div><ul class="ai-itinerary-list">' +
+          rec.map(p => '<li>' + escapeHtml(p.name || 'Unnamed POI') + '</li>').join('') +
+          '</ul>'
+        : '';
+      const dayLabel = 'Day ' + escapeHtml(plan.day);
+      return (
+        '<details class="ai-itinerary-day" ' + (idx === 0 ? 'open' : '') + '>' +
+          '<summary>' + dayLabel + ' ▸</summary>' +
+          '<div class="ai-itinerary-day-body">' +
+            mustHtml +
+            recHtml +
+          '</div>' +
+        '</details>'
+      );
+    }).join('');
+  }
+
+  async function fetchAndRenderItinerary(tripId) {
+    const placeholderWrap = appendMessage('assistant', '', true);
+    try {
+      const res = await fetch('/api/trips/' + encodeURIComponent(tripId) + '/candidates');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setBubbleContent(placeholderWrap, 'Trip saved, but itinerary is not available right now.');
+        return;
+      }
+      const html = renderItineraryHtml(data.day_plans || []);
+      setBubbleHtmlContent(placeholderWrap, html);
+      chatHistory.push({ role: 'assistant', content: 'Itinerary generated.' });
+    } catch (err) {
+      setBubbleContent(placeholderWrap, 'Trip saved, but failed to load itinerary.');
+    }
+  }
+
   function showWelcomeMessage() {
     if (welcomeShown) return;
     welcomeShown = true;
@@ -581,6 +650,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         }
         errEl.style.display = 'none';
         closeQuestionnaire();
+        if (result.trip_id) {
+          fetchAndRenderItinerary(result.trip_id);
+        }
       } catch (err) {
         console.error('Failed to save trip:', err);
         errEl.textContent = 'Network error. Please try again.';
