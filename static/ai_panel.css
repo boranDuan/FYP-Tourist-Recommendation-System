@@ -93,17 +93,49 @@ body.show-ai-panel #ai-panel {
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   background: #fafafa;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.ai-itinerary-day summary {
-  cursor: pointer;
+.ai-itinerary-day:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.ai-itinerary-day-head {
   padding: 10px 12px;
   font-weight: 600;
-  list-style: none;
+  color: #111827;
+  user-select: none;
 }
 
-.ai-itinerary-day summary::-webkit-details-marker {
-  display: none;
+.ai-itinerary-day.ai-ripple-active::after {
+  content: '';
+  position: absolute;
+  width: var(--ripple-size, 12px);
+  height: var(--ripple-size, 12px);
+  left: var(--ripple-x, 50%);
+  top: var(--ripple-y, 50%);
+  transform: scale(0);
+  border-radius: 999px;
+  background: #60a5fa;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.32;
+  animation: ai-rippling 800ms ease-out forwards;
+}
+
+@keyframes ai-rippling {
+  0% {
+    opacity: 0.35;
+    transform: scale(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
 }
 
 .ai-itinerary-day-body {
@@ -128,7 +160,7 @@ body.show-ai-panel #ai-panel {
 }
 
 .ai-itinerary-poi-btn {
-  width: 100%;
+  width: auto;
   border: 0;
   background: transparent;
   padding: 2px 0;

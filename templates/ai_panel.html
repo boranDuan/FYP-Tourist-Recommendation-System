@@ -291,27 +291,45 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         : '';
       const dayLabel = 'Day ' + escapeHtml(plan.day);
       return (
-        '<details class="ai-itinerary-day" data-day="' + escapeHtml(plan.day) + '" ' + (idx === 0 ? 'open' : '') + '>' +
-          '<summary data-day="' + escapeHtml(plan.day) + '">' + dayLabel + ' ▸</summary>' +
+        '<div class="ai-itinerary-day" data-day="' + escapeHtml(plan.day) + '">' +
+          '<div class="ai-itinerary-day-head" data-day="' + escapeHtml(plan.day) + '">' + dayLabel + ' ▸</div>' +
           '<div class="ai-itinerary-day-body">' +
             mustHtml +
             recHtml +
           '</div>' +
-        '</details>'
+        '</div>'
       );
     }).join('');
   }
 
   function bindItineraryDayEvents(wrap) {
     if (!wrap) return;
-    wrap.querySelectorAll('.ai-itinerary-day summary').forEach(summaryEl => {
-      summaryEl.addEventListener('click', function() {
+    wrap.querySelectorAll('.ai-itinerary-day').forEach(dayEl => {
+      dayEl.addEventListener('click', function(e) {
+        // 点 POI 文字按钮时保持“跳转 Search panel”；其余区域（含 Day 标题）切换当天路线
+        if (e.target.closest('.ai-itinerary-poi-btn')) {
+          return;
+        }
+
+        const rect = this.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        const x = e.clientX - rect.left - size / 2;
+        const y = e.clientY - rect.top - size / 2;
+        this.style.setProperty('--ripple-x', x + 'px');
+        this.style.setProperty('--ripple-y', y + 'px');
+        this.style.setProperty('--ripple-size', size + 'px');
+        this.classList.remove('ai-ripple-active');
+        void this.offsetWidth;
+        this.classList.add('ai-ripple-active');
+        setTimeout(() => this.classList.remove('ai-ripple-active'), 820);
+
         const day = Number(this.dataset.day);
         if (Number.isFinite(day) && typeof window.setCurrentItineraryDay === 'function') {
           window.setCurrentItineraryDay(day);
         }
       });
     });
+
     wrap.querySelectorAll('.ai-itinerary-poi-btn').forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.preventDefault();
