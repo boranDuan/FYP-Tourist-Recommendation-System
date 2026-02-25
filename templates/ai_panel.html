@@ -219,6 +219,7 @@
 
   let chatHistory = [];
   let welcomeShown = false;
+  let itineraryDayPlansState = [];
 
   const AI_WELCOME = `Hi!
 I can help you create a personalized Dublin travel itinerary.
@@ -305,8 +306,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         : '';
       const dayLabel = 'Day ' + escapeHtml(plan.day);
       return (
-        '<details class="ai-itinerary-day" ' + (idx === 0 ? 'open' : '') + '>' +
-          '<summary>' + dayLabel + ' ▸</summary>' +
+        '<details class="ai-itinerary-day" data-day="' + escapeHtml(plan.day) + '" ' + (idx === 0 ? 'open' : '') + '>' +
+          '<summary data-day="' + escapeHtml(plan.day) + '">' + dayLabel + ' ▸</summary>' +
           '<div class="ai-itinerary-day-body">' +
             mustHtml +
             recHtml +
@@ -314,6 +315,18 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         '</details>'
       );
     }).join('');
+  }
+
+  function bindItineraryDayEvents(wrap) {
+    if (!wrap) return;
+    wrap.querySelectorAll('.ai-itinerary-day summary').forEach(summaryEl => {
+      summaryEl.addEventListener('click', function() {
+        const day = Number(this.dataset.day);
+        if (Number.isFinite(day) && typeof window.setCurrentItineraryDay === 'function') {
+          window.setCurrentItineraryDay(day);
+        }
+      });
+    });
   }
 
   async function fetchAndRenderItinerary(tripId) {
@@ -325,8 +338,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         setBubbleContent(placeholderWrap, 'Trip saved, but itinerary is not available right now.');
         return;
       }
-      const html = renderItineraryHtml(data.day_plans || []);
+      itineraryDayPlansState = Array.isArray(data.day_plans) ? data.day_plans : [];
+      const html = renderItineraryHtml(itineraryDayPlansState);
       setBubbleHtmlContent(placeholderWrap, html);
+      bindItineraryDayEvents(placeholderWrap);
+      if (typeof window.setItineraryDayPlans === 'function') {
+        window.setItineraryDayPlans(itineraryDayPlansState, 1);
+      }
       chatHistory.push({ role: 'assistant', content: 'Itinerary generated.' });
     } catch (err) {
       setBubbleContent(placeholderWrap, 'Trip saved, but failed to load itinerary.');

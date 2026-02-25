@@ -535,12 +535,24 @@ def _compute_candidates_and_itinerary(pref, limit=200):
         g.setdefault("score", None)
         g["source"] = "google"
 
+    # 同园区去重半径（km）：用于避免 must-visit 与 nearby 推荐点重复
+    try:
+        must_visit_dedup_radius_km = float(os.getenv("MUST_VISIT_DEDUP_RADIUS_KM", "0.35"))
+    except (TypeError, ValueError):
+        must_visit_dedup_radius_km = 0.35
+
     final_pois = list(google_must_visits)
     for p in pois_data:
-        if any(_is_same_location(p, g) for g in google_must_visits):
+        if any(_is_same_location(p, g, threshold_km=must_visit_dedup_radius_km) for g in google_must_visits):
+            if _dedup_debug_enabled():
+                _dedup_debug(
+                    f"skip nearby-to-must-visit local='{p.get('name')}' radius_km={must_visit_dedup_radius_km}"
+                )
             continue
         p["source"] = "local"
         final_pois.append(p)
+    # 同名族分组 + 空间聚类去重
+    final_pois = _dedupe_pois_identity_geo(final_pois)
     final_pois = final_pois[:limit]
 
     google_place_ids = [g["place_id"] for g in google_must_visits]
@@ -589,6 +601,193 @@ def _is_same_location(poi1, poi2, threshold_km=0.1):
         return dist < threshold_km
     except (TypeError, ValueError):
         return False
+
+
+def _canonical_poi_name(name):
+    """
+    规范化 POI 名称用于去重：
+    - 小写
+    - 取逗号前主名称（例如 "National Museum of Ireland, Kildare Street" -> "national museum of ireland"）
+    """
+    if not name:
+        return ""
+    base = str(name).split(",", 1)[0].strip().lower()
+    base = re.sub(r"\s+", " ", base)
+    return base
+
+
+def _dedup_debug_enabled():
+    return os.getenv("DEBUG_DEDUP", "").lower() in ("1", "true", "yes", "on")
+
+
+def _dedup_debug(msg):
+    if _dedup_debug_enabled():
+        app.logger.info(f"[dedup] {msg}")
+
+
+def _dedupe_pois_identity_geo(pois):
+    """
+    同名族分组 + 空间聚类（核心）：
+    1) 先按身份硬去重（place_id / poi_id）
+    2) 对本地 POI 按“主名称（逗号前）”分组
+    3) 每个名称族内按距离聚类；同簇仅保留一个代表点
+       - 不同簇保留（例如同品牌不同馆）
+       - 代表点优先 score 更高
+    """
+    CLUSTER_RADIUS_KM = 0.8
+    # 全局去重半径（保守）：仅用于“跨名称/跨 source”的近重复清理
+    GLOBAL_NEAR_DUP_KM = 0.12
+
+    # Step 1: 身份硬去重（保序）
+    seen_place_ids = set()
+    seen_poi_ids = set()
+    unique = []
+    dropped_by_id = 0
+    for poi in pois:
+        place_id = poi.get("place_id")
+        poi_id = poi.get("poi_id")
+
+        if place_id:
+            if place_id in seen_place_ids:
+                dropped_by_id += 1
+                continue
+            seen_place_ids.add(place_id)
+            unique.append(poi)
+            continue
+
+        if poi_id is not None:
+            if poi_id in seen_poi_ids:
+                dropped_by_id += 1
+                continue
+            seen_poi_ids.add(poi_id)
+            unique.append(poi)
+            continue
+
+        unique.append(poi)
+
+    # Step 2: 同名族分组 + 空间聚类（仅处理 local，避免误并 must-visit Google 点）
+    grouped = {}
+    for idx, poi in enumerate(unique):
+        if poi.get("source") == "google":
+            continue
+        family = _canonical_poi_name(poi.get("name"))
+        if not family:
+            continue
+        grouped.setdefault(family, []).append((idx, poi))
+
+    drop_indices = set()
+    merge_logs = []
+    for members in grouped.values():
+        if len(members) <= 1:
+            continue
+
+        clusters = []  # [{"indices":[...], "pois":[...]}]
+        for idx, poi in members:
+            lat, lng = poi.get("latitude"), poi.get("longitude")
+            if lat is None or lng is None:
+                clusters.append({"indices": [idx], "pois": [poi]})
+                continue
+
+            placed = False
+            for c in clusters:
+                # 单链路：与簇内任一点足够近就入簇
+                if any(_is_same_location(poi, cp, threshold_km=CLUSTER_RADIUS_KM) for cp in c["pois"]):
+                    c["indices"].append(idx)
+                    c["pois"].append(poi)
+                    placed = True
+                    break
+
+            if not placed:
+                clusters.append({"indices": [idx], "pois": [poi]})
+
+        # 每个簇只留一个代表点：优先 score 高；同分保留先出现
+        for c in clusters:
+            if len(c["indices"]) <= 1:
+                continue
+
+            best_idx = c["indices"][0]
+            best_score = unique[best_idx].get("score")
+            best_score = float(best_score) if best_score is not None else -1.0
+
+            for idx in c["indices"][1:]:
+                cur_score = unique[idx].get("score")
+                cur_score = float(cur_score) if cur_score is not None else -1.0
+                if cur_score > best_score:
+                    best_idx = idx
+                    best_score = cur_score
+
+            for idx in c["indices"]:
+                if idx != best_idx:
+                    drop_indices.add(idx)
+                    if _dedup_debug_enabled() and len(merge_logs) < 30:
+                        merge_logs.append(
+                            f"merge family='{_canonical_poi_name(unique[idx].get('name'))}' "
+                            f"keep='{unique[best_idx].get('name')}' drop='{unique[idx].get('name')}'"
+                        )
+    result = [poi for i, poi in enumerate(unique) if i not in drop_indices]
+
+    # Step 3: 全局空间去重（跨 source、跨名称）
+    # 仅在非常近的情况下合并，避免把城市中心相邻但独立的景点误并。
+    global_drop_indices = set()
+    clusters = []  # [{"indices":[...], "pois":[...]}]
+    for idx, poi in enumerate(result):
+        lat, lng = poi.get("latitude"), poi.get("longitude")
+        if lat is None or lng is None:
+            continue
+
+        placed = False
+        for c in clusters:
+            if any(_is_same_location(poi, cp, threshold_km=GLOBAL_NEAR_DUP_KM) for cp in c["pois"]):
+                c["indices"].append(idx)
+                c["pois"].append(poi)
+                placed = True
+                break
+        if not placed:
+            clusters.append({"indices": [idx], "pois": [poi]})
+
+    def _pick_representative_idx(indices):
+        # 优先保留 google（通常是 must-visit 或用户指定点），其次 score 高，最后保留先出现
+        best_idx = indices[0]
+        best = result[best_idx]
+        best_key = (
+            1 if best.get("source") == "google" else 0,
+            float(best.get("score")) if best.get("score") is not None else -1.0,
+            -best_idx,
+        )
+        for idx in indices[1:]:
+            cur = result[idx]
+            cur_key = (
+                1 if cur.get("source") == "google" else 0,
+                float(cur.get("score")) if cur.get("score") is not None else -1.0,
+                -idx,
+            )
+            if cur_key > best_key:
+                best_idx = idx
+                best_key = cur_key
+        return best_idx
+
+    for c in clusters:
+        if len(c["indices"]) <= 1:
+            continue
+        keep_idx = _pick_representative_idx(c["indices"])
+        for idx in c["indices"]:
+            if idx != keep_idx:
+                global_drop_indices.add(idx)
+                if _dedup_debug_enabled() and len(merge_logs) < 30:
+                    merge_logs.append(
+                        f"merge global keep='{result[keep_idx].get('name')}' drop='{result[idx].get('name')}'"
+                    )
+
+    final_result = [poi for i, poi in enumerate(result) if i not in global_drop_indices]
+    if _dedup_debug_enabled():
+        _dedup_debug(
+            f"input={len(pois)} after_id={len(unique)} dropped_by_id={dropped_by_id} "
+            f"dropped_by_cluster={len(drop_indices)} dropped_by_global={len(global_drop_indices)} "
+            f"output={len(final_result)} family_radius_km={CLUSTER_RADIUS_KM} global_radius_km={GLOBAL_NEAR_DUP_KM}"
+        )
+        for line in merge_logs:
+            _dedup_debug(line)
+    return final_result
 
 
 @app.route("/api/trips/<int:trip_id>/candidates", methods=["GET"])

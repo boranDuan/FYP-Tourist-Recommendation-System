@@ -145,14 +145,17 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 
 def optimize_route_greedy_tsp(day_pois):
-    """贪心 TSP：从最西点开始，每次选最近的下一个未访问点。"""
+    """贪心 TSP：从离当日中心最近点开始，每次选最近的下一个未访问点。"""
     if len(day_pois) <= 2:
         return day_pois
-    # 从最西点（经度最小）开始
-    ordered = sorted(day_pois, key=lambda p: (p.get('longitude') or 0))
-    start = ordered[0]
+    center = _center_of_pois(day_pois)
+    if center is None:
+        ordered = sorted(day_pois, key=lambda p: (p.get('longitude') or 0))
+        start = ordered[0]
+    else:
+        start = min(day_pois, key=lambda p: _poi_distance_to_point(p, center[0], center[1]))
     path = [start]
-    remaining = ordered[1:]
+    remaining = [p for p in day_pois if p is not start]
     while remaining:
         last = path[-1]
         lat1, lon1 = last.get('latitude') or 0, last.get('longitude') or 0
@@ -251,8 +254,6 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
     - 时长允许灵活超标（buffer）
     支持 Google place_id 与本地 poi_id。
     """
-    import numpy as np
-
     warnings = []
     must_visit_set = set(must_visit_identifiers or [])
 
@@ -283,19 +284,6 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
             f"Must-visit POIs require {must_visit_hours:.1f}h, adjusted daily pace to {adjusted_daily:.1f}h"
         )
 
-    # 按分数分层
-    def _tier(p):
-        s = p.get("score") or 0
-        if s >= 0.9:
-            return 1
-        if s >= 0.7:
-            return 2
-        return 3
-
-    tier1 = [p for p in remaining_pois if _tier(p) == 1]
-    tier2 = [p for p in remaining_pois if _tier(p) == 2]
-    tier3 = [p for p in remaining_pois if _tier(p) == 3]
-
     # Step 1: Must-visit 分配到天（地理聚类，允许相近的 must-visit 同一天）
     n_must_clusters = min(trip_days, max(1, (len(must_visit_pois) + 1) // 2))
     must_visit_clusters = (
@@ -315,70 +303,11 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
         if uid is not None:
             used_ids.add(uid)
 
-    # Step 2: 有 Must-visit 的天，在附近选高分 POI
-    tier12 = tier1 + tier2
-    for plan in day_plans:
-        if not plan["must_visit"]:
-            continue
-        center = _center_of_pois(plan["must_visit"])
-        if center is None:
-            continue
-        day_dur = sum(get_poi_duration(p) for p in plan["must_visit"])
-        candidates = [p for p in tier12 if (p.get("place_id") or p.get("poi_id")) not in used_ids]
-        candidates.sort(key=lambda p: _poi_distance_to_point(p, center[0], center[1]))
-        for p in candidates:
-            if day_dur + get_poi_duration(p) <= max_day_hours:
-                plan["recommended"].append(p)
-                uid = p.get("place_id") or p.get("poi_id")
-                if uid is not None:
-                    used_ids.add(uid)
-                day_dur += get_poi_duration(p)
+    # Step 2 + Step 3: 固定 anchor + 最近邻扩展（不漂移、不跨城）
+    _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, max_day_hours)
 
-    # Step 3: 无 Must-visit 的天，地理聚类填充
-    left_over = [
-        p for p in remaining_pois
-        if (p.get("place_id") or p.get("poi_id")) not in used_ids
-    ]
-    days_without_must = [p for p in day_plans if not p["must_visit"]]
-    if left_over and days_without_must:
-        n_clusters = len(days_without_must)
-        try:
-            from sklearn.cluster import KMeans
-            coords = np.array([
-                [float(p.get("latitude") or 0), float(p.get("longitude") or 0)]
-                for p in left_over
-            ])
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-            labels = kmeans.fit_predict(coords)
-            for idx, plan in enumerate(days_without_must):
-                if idx >= n_clusters:
-                    break
-                cluster_pois = [p for i, p in enumerate(left_over) if labels[i] == idx]
-                cluster_pois.sort(key=lambda p: p.get("score") or 0, reverse=True)
-                day_dur = 0.0
-                for p in cluster_pois:
-                    uid = p.get("place_id") or p.get("poi_id")
-                    if uid in used_ids:
-                        continue
-                    dur = get_poi_duration(p)
-                    if day_dur + dur <= max_day_hours:
-                        plan["recommended"].append(p)
-                        if uid is not None:
-                            used_ids.add(uid)
-                        day_dur += dur
-        except ImportError:
-            # 无 sklearn：简单按分数均分
-            left_over.sort(key=lambda p: p.get("score") or 0, reverse=True)
-            for i, p in enumerate(left_over):
-                uid = p.get("place_id") or p.get("poi_id")
-                if uid in used_ids:
-                    continue
-                plan = days_without_must[i % len(days_without_must)]
-                day_dur = sum(get_poi_duration(x) for x in plan["recommended"])
-                if day_dur + get_poi_duration(p) <= max_day_hours:
-                    plan["recommended"].append(p)
-                    if uid is not None:
-                        used_ids.add(uid)
+    # Step 3.5: 轻量跨天优化（相邻天 swap）
+    _optimize_adjacent_day_swap(day_plans, max_day_hours)
 
     # Step 4: 每天合并 must_visit + recommended，TSP 优化
     result_plans = []
@@ -402,6 +331,95 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
 # 地理软约束：超过此距离（km）时降低分数，但不排除
 MAX_DISTANCE_SOFT_KM = 15.0
 DISTANCE_PENALTY = 0.7
+MAX_DAY_RADIUS_KM = 10.0
+DUBLIN_CENTER = (53.3498, -6.2603)
+MAX_CITY_RADIUS_KM = 8.0
+
+
+def _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, max_day_hours):
+    """
+    固定 Day Anchor + 最近邻扩展：
+    - 有 must-visit 的天：anchor = must-visit 中心
+    - 无 must-visit 的天：anchor = Dublin city center
+    - 只填充 anchor 半径内的 POI，避免跨城漂移
+    """
+    for plan in day_plans:
+        anchor = _center_of_pois(plan["must_visit"]) if plan["must_visit"] else DUBLIN_CENTER
+        if anchor is None:
+            continue
+
+        day_dur = sum(get_poi_duration(p) for p in plan["must_visit"])
+
+        candidates = [
+            p for p in remaining_pois
+            if (p.get("place_id") or p.get("poi_id")) not in used_ids
+        ]
+        candidates.sort(key=lambda p: _poi_distance_to_point(p, anchor[0], anchor[1]))
+
+        for poi in candidates:
+            uid = poi.get("place_id") or poi.get("poi_id")
+            if uid in used_ids:
+                continue
+
+            # City Bias: 超出都柏林中心半径则跳过
+            city_dist = _poi_distance_to_point(poi, DUBLIN_CENTER[0], DUBLIN_CENTER[1])
+            if city_dist > MAX_CITY_RADIUS_KM:
+                continue
+
+            dist = _poi_distance_to_point(poi, anchor[0], anchor[1])
+            if dist > MAX_DAY_RADIUS_KM:
+                break
+
+            dur = get_poi_duration(poi)
+            if day_dur + dur > max_day_hours:
+                continue
+
+            plan["recommended"].append(poi)
+            if uid is not None:
+                used_ids.add(uid)
+            day_dur += dur
+
+
+def _optimize_adjacent_day_swap(day_plans, max_day_hours):
+    """
+    轻量跨天优化（仅相邻天）：
+    - 只移动 recommended（不移动 must-visit）
+    - 若 POI 距离前一天中心更近，且前一天时长允许，则从 Day(i+1) 移到 Day(i)
+    """
+    if not day_plans or len(day_plans) < 2:
+        return
+
+    def _plan_center(plan):
+        all_pois = (plan.get("must_visit") or []) + (plan.get("recommended") or [])
+        return _center_of_pois(all_pois)
+
+    def _plan_duration(plan):
+        all_pois = (plan.get("must_visit") or []) + (plan.get("recommended") or [])
+        return sum(get_poi_duration(p) for p in all_pois)
+
+    for i in range(1, len(day_plans)):
+        prev_plan = day_plans[i - 1]
+        curr_plan = day_plans[i]
+        movable = list(curr_plan.get("recommended") or [])
+
+        for poi in movable:
+            prev_center = _plan_center(prev_plan)
+            curr_center = _plan_center(curr_plan)
+            if prev_center is None or curr_center is None:
+                continue
+
+            d_prev = _poi_distance_to_point(poi, prev_center[0], prev_center[1])
+            d_curr = _poi_distance_to_point(poi, curr_center[0], curr_center[1])
+            if d_prev >= d_curr:
+                continue
+
+            poi_dur = get_poi_duration(poi)
+            if _plan_duration(prev_plan) + poi_dur > max_day_hours:
+                continue
+
+            # move_to_Day(i)_if_time_allows
+            curr_plan["recommended"].remove(poi)
+            prev_plan["recommended"].append(poi)
 
 
 def allocate_pois_to_days_v4_popularity_first(pois, must_visit_identifiers, preference, trip_days):
@@ -481,12 +499,19 @@ def allocate_pois_to_days_v4_popularity_first(pois, must_visit_identifiers, pref
             uid = p.get("place_id") or p.get("poi_id")
             if uid in used_ids:
                 continue
+            # City Bias: 超出都柏林中心半径则跳过
+            city_dist = _poi_distance_to_point(p, DUBLIN_CENTER[0], DUBLIN_CENTER[1])
+            if city_dist > MAX_CITY_RADIUS_KM:
+                continue
             poi_dur = get_poi_duration(p)
             if day_dur + poi_dur > max_day_hours:
                 continue
             plan["recommended"].append(p)
             used_ids.add(uid)
             day_dur += poi_dur
+
+    # Step 3: 轻量跨天优化（相邻天 swap）
+    _optimize_adjacent_day_swap(day_plans, max_day_hours)
 
     result_plans = []
     for plan in day_plans:

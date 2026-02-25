@@ -178,6 +178,10 @@
 let map, activeLayer=null, activeLegend=null, selectedOption=null;
 let CONFIG = {};
 let geocoder = null;
+let itineraryDayMarkers = [];
+let itineraryDayPolyline = null;
+let itineraryDayPlans = [];
+let currentDay = 1;
 
 /**
  * 为 InfoWindow 添加“鼠标移出 marker 和 InfoWindow 即自动关闭”的行为
@@ -489,7 +493,129 @@ function initMap(){
       debouncedHandleBoundsChange();
     });
   }
+
+  // 若 AI 面板先拿到 itinerary，这里在地图初始化完成后补绘制一次
+  renderCurrentDayProjection();
 }
+
+function clearItineraryProjection() {
+  itineraryDayMarkers.forEach(m => m.setMap(null));
+  itineraryDayMarkers = [];
+  if (itineraryDayPolyline) {
+    itineraryDayPolyline.setMap(null);
+    itineraryDayPolyline = null;
+  }
+}
+
+function openSearchPanelFromMap() {
+  document.body.classList.add('collapsed');
+  document.body.classList.remove('show-favorites');
+  document.body.classList.remove('show-ai-panel');
+  const collapseBtn = document.getElementById('collapseBtn');
+  if (collapseBtn) collapseBtn.textContent = '←';
+}
+
+function renderPoiFallbackInSearchPanel(poi) {
+  const detailsEl = document.getElementById('place-details');
+  const inputEl = document.getElementById('search-input');
+  if (inputEl) inputEl.value = poi.name || '';
+  if (!detailsEl) return;
+  const lat = poi.latitude != null ? Number(poi.latitude).toFixed(5) : '-';
+  const lng = poi.longitude != null ? Number(poi.longitude).toFixed(5) : '-';
+  const typeLabel = poi.is_must_visit ? 'Must Visit' : 'Recommended';
+  detailsEl.innerHTML = `
+    <div class="place-details-card">
+      <div class="place-title-wrapper">
+        <div class="place-title">${poi.name || 'Selected place'}</div>
+      </div>
+      <div class="place-meta">
+        <span class="place-types">${typeLabel}</span>
+      </div>
+      <div class="place-address">Coordinates: ${lat}, ${lng}</div>
+    </div>
+  `;
+}
+
+function handleItineraryMarkerClick(poi) {
+  openSearchPanelFromMap();
+  if (poi && poi.place_id && typeof handlePlaceSelected === 'function') {
+    handlePlaceSelected(poi.place_id, poi.name || 'Selected place', true);
+    return;
+  }
+  renderPoiFallbackInSearchPanel(poi || {});
+}
+
+function renderCurrentDayProjection() {
+  if (!map) return;
+  clearItineraryProjection();
+  if (!Array.isArray(itineraryDayPlans) || itineraryDayPlans.length === 0) return;
+
+  const dayPlan = itineraryDayPlans.find(p => Number(p.day) === Number(currentDay)) || itineraryDayPlans[0];
+  if (!dayPlan || !Array.isArray(dayPlan.pois)) return;
+
+  const points = [];
+  dayPlan.pois.forEach((poi, idx) => {
+    const lat = Number(poi.latitude);
+    const lng = Number(poi.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const pos = { lat, lng };
+    points.push(pos);
+    const isMust = !!poi.is_must_visit;
+    const marker = new google.maps.Marker({
+      map,
+      position: pos,
+      title: poi.name || `POI ${idx + 1}`,
+      label: {
+        text: String(idx + 1),
+        color: '#ffffff',
+        fontSize: '11px',
+        fontWeight: '600',
+      },
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: isMust ? 9 : 7,
+        fillColor: isMust ? '#b00020' : '#ff4d4f',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+      },
+      zIndex: isMust ? 2000 : 1500,
+    });
+    marker.addListener('click', () => handleItineraryMarkerClick(poi));
+    itineraryDayMarkers.push(marker);
+  });
+
+  if (points.length >= 2) {
+    itineraryDayPolyline = new google.maps.Polyline({
+      map,
+      path: points,
+      geodesic: true,
+      strokeColor: '#d50000',
+      strokeOpacity: 1.0,
+      strokeWeight: 4,
+    });
+  }
+
+  if (points.length > 0) {
+    const bounds = new google.maps.LatLngBounds();
+    points.forEach(p => bounds.extend(p));
+    map.fitBounds(bounds, 60);
+  }
+}
+
+function setItineraryDayPlans(dayPlans, dayNum) {
+  itineraryDayPlans = Array.isArray(dayPlans) ? dayPlans : [];
+  currentDay = Number(dayNum) || 1;
+  renderCurrentDayProjection();
+}
+
+function setCurrentItineraryDay(dayNum) {
+  currentDay = Number(dayNum) || 1;
+  renderCurrentDayProjection();
+}
+
+window.setItineraryDayPlans = setItineraryDayPlans;
+window.setCurrentItineraryDay = setCurrentItineraryDay;
 
 
 function showLayerAndLegend(layerType,legendId){
