@@ -127,6 +127,34 @@ body.show-ai-panel #ai-panel {
   margin: 2px 0;
 }
 
+.ai-itinerary-poi-btn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+}
+
+.ai-itinerary-poi-btn:hover .ai-itinerary-poi-name {
+  text-decoration: underline;
+}
+
+.ai-itinerary-poi-index {
+  min-width: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+}
+
+.ai-itinerary-poi-name {
+  font-size: 14px;
+}
+
 /* 加载占位（三个点） */
 .ai-msg-bubble {
   position: relative;

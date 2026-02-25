@@ -490,6 +490,7 @@ def _compute_candidates_and_itinerary(pref, limit=200):
     for poi, score in scored:
         pois_data.append({
             "poi_id": poi.poi_id,
+            "place_id": getattr(poi, "google_place_id", None),
             "name": poi.name,
             "score": score,
             "filter_ids": [f.filter_id for f in poi.filters],

@@ -545,6 +545,61 @@ function handleItineraryMarkerClick(poi) {
   renderPoiFallbackInSearchPanel(poi || {});
 }
 
+function focusItineraryPoi(dayNum, poiIndex) {
+  const day = Number(dayNum);
+  const idx = Number(poiIndex);
+  if (!Number.isFinite(day) || !Number.isFinite(idx)) return;
+  const dayPlan = itineraryDayPlans.find(p => Number(p.day) === day);
+  if (!dayPlan || !Array.isArray(dayPlan.pois)) return;
+  const poi = dayPlan.pois[idx];
+  if (!poi) return;
+
+  currentDay = day;
+  renderCurrentDayProjection();
+  openSearchPanelFromMap();
+
+  const lat = Number(poi.latitude);
+  const lng = Number(poi.longitude);
+  if (map && Number.isFinite(lat) && Number.isFinite(lng)) {
+    map.panTo({ lat, lng });
+    map.setZoom(Math.max(map.getZoom() || 12, 15));
+  }
+
+  // 优先拉完整 Google 名片（P2），失败时回退到简版卡片（P1）
+  if (typeof handlePlaceSelected !== 'function') {
+    renderPoiFallbackInSearchPanel(poi);
+    return;
+  }
+
+  if (poi.place_id) {
+    handlePlaceSelected(poi.place_id, poi.name || 'Selected place', true);
+    return;
+  }
+
+  // 没有 place_id 时，用“名称 + Dublin”做一次 Places 文本检索，成功后仍走 P2 卡片
+  if (placesService && poi.name) {
+    const req = {
+      query: `${poi.name} Dublin`,
+      fields: ['name', 'place_id', 'geometry'],
+    };
+    placesService.findPlaceFromQuery(req, (results, status) => {
+      if (
+        status === google.maps.places.PlacesServiceStatus.OK &&
+        Array.isArray(results) &&
+        results[0] &&
+        results[0].place_id
+      ) {
+        handlePlaceSelected(results[0].place_id, poi.name || results[0].name || 'Selected place', true);
+        return;
+      }
+      renderPoiFallbackInSearchPanel(poi);
+    });
+    return;
+  }
+
+  renderPoiFallbackInSearchPanel(poi);
+}
+
 function renderCurrentDayProjection() {
   if (!map) return;
   clearItineraryProjection();
@@ -616,6 +671,7 @@ function setCurrentItineraryDay(dayNum) {
 
 window.setItineraryDayPlans = setItineraryDayPlans;
 window.setCurrentItineraryDay = setCurrentItineraryDay;
+window.focusItineraryPoi = focusItineraryPoi;
 
 
 function showLayerAndLegend(layerType,legendId){
