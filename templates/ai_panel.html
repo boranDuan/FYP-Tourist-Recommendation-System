@@ -76,27 +76,6 @@
             </div>
           </div>
 
-          <div class="q-field">
-            <label class="q-label">4. Hotel budget <strong>per night</strong> and <strong>preferred area </strong>(optional) </label>
-            <div class="q-budget-row q-hotel-row">
-              <select name="hotel_budget_unit" id="q-hotel-budget-unit" class="q-input q-select q-budget-unit">
-                <option value="">Select budget</option>
-                <option value="0-75">0–75€</option>
-                <option value="75-150">75–150€</option>
-                <option value="150-250">150–225€</option>
-                <option value="225-300">225–300€</option>
-                <option value="more than 300">> 300€</option>
-              </select>
-              <select name="hotel_preferred_area" id="q-hotel-preferred-area" class="q-input q-select q-preferred-area">
-                <option value="">Preferred area</option>
-                <option value="city_centre">City centre</option>
-                <option value="near_main_attractions">Near main attractions</option>
-                <option value="near_public_transport">Near public transport</option>
-                <option value="quiet_residential">Quiet residential area</option>
-                <option value="no_preference">No preference</option>
-              </select>
-            </div>
-          </div>
         </section>
 
         <section class="q-section">
@@ -109,7 +88,6 @@
               <div class="q-rank-item" data-value="parks_nature">Parks &amp; Nature</div>
               <div class="q-rank-item" data-value="events_cultural">Events &amp; Cultural Activities</div>
               <div class="q-rank-item" data-value="shopping">Shopping</div>
-              <div class="q-rank-item" data-value="nightlife_pubs">Nightlife / Pubs</div>
             </div>
             <input type="text" name="interests_other" id="q-interests-other" class="q-input" placeholder="Others (please specify)" style="margin-top:8px;">
           </div>
@@ -119,15 +97,6 @@
             <textarea name="specific_places" id="q-specific-places" class="q-input q-textarea q-textarea-compact" rows="1" placeholder="e.g., Trinity College, Guinness Storehouse"></textarea>
           </div>
 
-          <div class="q-field">
-            <label class="q-label">7. Is there anything you would like to avoid? (optional)</label>
-            <div class="q-checkbox-group">
-              <label class="q-checkbox"><input type="checkbox" name="avoid" value="too_much_walking"> Too much walking</label>
-              <label class="q-checkbox"><input type="checkbox" name="avoid" value="very_crowded"> Very crowded places</label>
-              <label class="q-checkbox"><input type="checkbox" name="avoid" value="stairs_hills"> Stairs / Hills</label>
-            </div>
-            <input type="text" name="avoid_other" id="q-avoid-other" class="q-input" placeholder="Other: (please specify)" style="margin-top:8px;">
-          </div>
         </section>
 
         <section class="q-section">
@@ -505,14 +474,14 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   })();
 
   // 问卷：Q5 兴趣排序（点击排序，再点击取消）
-  const INTEREST_WEIGHTS = { 1: [1.0], 2: [0.7, 0.3], 3: [0.5, 0.3, 0.2], 4: [0.35, 0.3, 0.2, 0.15], 5: [0.35, 0.3, 0.2, 0.1, 0.05] };
-  const INTEREST_VALUE_TO_KEY = { museums_historical: 'museum', parks_nature: 'nature', events_cultural: 'culture', shopping: 'shopping', nightlife_pubs: 'nightlife' };
-  const INTEREST_LABELS = { museums_historical: 'Museums & Historical Sites', parks_nature: 'Parks & Nature', events_cultural: 'Events & Cultural Activities', shopping: 'Shopping', nightlife_pubs: 'Nightlife / Pubs' };
+  const INTEREST_WEIGHTS = { 1: [1.0], 2: [0.7, 0.3], 3: [0.5, 0.3, 0.2], 4: [0.35, 0.3, 0.2, 0.15] };
+  const INTEREST_VALUE_TO_KEY = { museums_historical: 'museum', parks_nature: 'nature', events_cultural: 'culture', shopping: 'shopping' };
+  const INTEREST_LABELS = { museums_historical: 'Museums & Historical Sites', parks_nature: 'Parks & Nature', events_cultural: 'Events & Cultural Activities', shopping: 'Shopping' };
   let interestsRankOrder = [];
   (function() {
     const container = document.getElementById('q-interests-rank');
     if (!container) return;
-    const allValues = ['museums_historical', 'parks_nature', 'events_cultural', 'shopping', 'nightlife_pubs'];
+    const allValues = ['museums_historical', 'parks_nature', 'events_cultural', 'shopping'];
     function render() {
       const selected = interestsRankOrder.map((val, i) => ({ val, rank: i + 1 }));
       const unselected = allValues.filter(v => !interestsRankOrder.includes(v));
@@ -552,7 +521,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     render();
   })();
 
-  // 问卷：必填校验（Q4、Q7、Q12 为可选，1b 为可选，其余必填）
+  // 问卷：必填校验（Q12 为可选，1b 为可选，其余必填）
   function validateQuestionnaire() {
     const errEl = document.getElementById('q-form-error');
     const errors = [];
@@ -562,8 +531,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const visitDate = document.getElementById('q-visit-date')?.value;
     const visitDateEnd = document.getElementById('q-visit-date-end')?.value;
     const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
-    const avoid = document.querySelectorAll('input[name="avoid"]:checked');
-    const avoidOther = document.getElementById('q-avoid-other')?.value?.trim();
     const pace = document.getElementById('q-pace')?.value;
     const startTimeUnit = document.getElementById('q-start-time-unit')?.value;
     const startTimeVal = document.getElementById('q-start-time-value')?.value;
@@ -609,16 +576,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         } else if (k === 'dietary_needs') {
           data.dietary_needs = data.dietary_needs || [];
           data.dietary_needs.push(v);
-        } else if (k === 'avoid') {
-          data.avoid = data.avoid || [];
-          data.avoid.push(v);
-        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other' && k !== 'avoid_other' && k !== 'interests_other') {
+        } else if (k !== 'dietary_allergy_detail' && k !== 'food_preference_other' && k !== 'interests_other') {
           data[k] = v;
         }
       }
       // Q5: 从排序构建 interests 权重对象
       const weightsArr = INTEREST_WEIGHTS[interestsRankOrder.length] || [1.0];
-      const interestsWeights = { museum: 0, culture: 0, nature: 0, shopping: 0, nightlife: 0 };
+      const interestsWeights = { museum: 0, culture: 0, nature: 0, shopping: 0 };
       interestsRankOrder.forEach((val, i) => {
         const key = INTEREST_VALUE_TO_KEY[val];
         if (key) interestsWeights[key] = weightsArr[i] || 0;
@@ -639,11 +603,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       if (dietaryOther) {
         data.dietary_needs = data.dietary_needs || [];
         data.dietary_needs.push('other:' + dietaryOther);
-      }
-      const avoidOther = document.getElementById('q-avoid-other')?.value?.trim();
-      if (avoidOther) {
-        data.avoid = data.avoid || [];
-        data.avoid.push('other:' + avoidOther);
       }
       // 后端校验并保存到数据库
       const errEl = document.getElementById('q-form-error');

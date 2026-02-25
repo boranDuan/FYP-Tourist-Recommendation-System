@@ -105,6 +105,7 @@ def calculate_final_score_with_popularity(interest_score, google_rating=None, go
         return interest_score * 0.7
     popularity_score = calculate_popularity_score(google_rating, google_ratings_total)
     final_score = interest_score * (1.0 + popularity_score * 0.8)
+    #final_score = interest_score + (1.0 - interest_score) * popularity_score * 0.35
     return min(1.0, final_score)
 
 
