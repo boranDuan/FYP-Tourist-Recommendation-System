@@ -184,6 +184,8 @@ let itineraryDirectionsService = null;
 let itineraryDirectionsRenderer = null;
 let itineraryDayPlans = [];
 let currentDay = 1;
+const ITINERARY_SEQ_COLORS = ['#3b82f6', '#ec4899', '#22c55e', '#8b5cf6', '#f59e0b'];
+let itineraryRenderToken = 0;
 
 /**
  * 为 InfoWindow 添加“鼠标移出 marker 和 InfoWindow 即自动关闭”的行为
@@ -498,12 +500,17 @@ function initMap(){
   }
 
   // 若 AI 面板先拿到 itinerary，这里在地图初始化完成后补绘制一次
+  if (Array.isArray(window.__pendingItineraryDayPlans) && window.__pendingItineraryDayPlans.length > 0) {
+    itineraryDayPlans = window.__pendingItineraryDayPlans;
+    currentDay = Number(window.__pendingItineraryCurrentDay) || 1;
+  }
   renderCurrentDayProjection();
 }
 
 function clearItineraryProjection() {
   itineraryDayMarkers.forEach(m => m.setMap(null));
   itineraryDayMarkers = [];
+  itineraryRenderToken += 1;
   if (itineraryDirectionsRenderer) {
     itineraryDirectionsRenderer.setMap(null);
     itineraryDirectionsRenderer = null;
@@ -547,26 +554,27 @@ function _renderDayMarkersInOrder(orderedPoints) {
   orderedPoints.forEach((item, idx) => {
     const poi = item.poi;
     const pos = item.pos;
-    const isMust = !!poi.is_must_visit;
+    const seq = idx + 1;
+    const seqColor = ITINERARY_SEQ_COLORS[idx % ITINERARY_SEQ_COLORS.length];
     const marker = new google.maps.Marker({
       map,
       position: pos,
-      title: poi.name || `POI ${idx + 1}`,
+      title: poi.name || `POI ${seq}`,
       label: {
-        text: String(idx + 1),
+        text: String(seq),
         color: '#ffffff',
         fontSize: '11px',
         fontWeight: '600',
       },
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
-        scale: isMust ? 9 : 7,
-        fillColor: isMust ? '#b00020' : '#ff4d4f',
+        scale: 8,
+        fillColor: seqColor,
         fillOpacity: 1,
         strokeColor: '#ffffff',
         strokeWeight: 2,
       },
-      zIndex: isMust ? 2000 : 1500,
+      zIndex: 1800,
     });
     marker.addListener('click', () => handleItineraryMarkerClick(poi));
     itineraryDayMarkers.push(marker);
@@ -668,7 +676,9 @@ function focusItineraryPoi(dayNum, poiIndex) {
 
 function renderCurrentDayProjection() {
   if (!map) return;
+  const renderToken = itineraryRenderToken + 1;
   clearItineraryProjection();
+  itineraryRenderToken = renderToken;
   if (!Array.isArray(itineraryDayPlans) || itineraryDayPlans.length === 0) return;
 
   const dayPlan = itineraryDayPlans.find(p => Number(p.day) === Number(currentDay)) || itineraryDayPlans[0];
@@ -692,20 +702,23 @@ function renderCurrentDayProjection() {
 
   // 使用 Directions API 渲染“真实道路路线”，并自动优化中间点顺序。
   if (itineraryDirectionsService) {
-    const [si, ei] = _pickFarthestEndpoints(points);
-    const origin = points[si].pos;
-    const destination = points[ei].pos;
-    const waypointItems = points.filter((_, idx) => idx !== si && idx !== ei);
+    const origin = points[0].pos;
+    const destination = points[points.length - 1].pos;
+    const waypointItems = points.slice(1, -1);
     const waypoints = waypointItems.map(x => ({ location: x.pos, stopover: true }));
     const request = {
       origin,
       destination,
       waypoints,
-      optimizeWaypoints: true,
+      optimizeWaypoints: false,
       travelMode: google.maps.TravelMode.WALKING,
     };
 
     itineraryDirectionsService.route(request, (res, status) => {
+      // 丢弃过期渲染：用户已切到别的 day，旧请求晚返回时不应覆盖当前路线
+      if (renderToken !== itineraryRenderToken) {
+        return;
+      }
       if (status === google.maps.DirectionsStatus.OK && res && res.routes && res.routes[0]) {
         itineraryDirectionsRenderer = new google.maps.DirectionsRenderer({
           map,
@@ -718,10 +731,7 @@ function renderCurrentDayProjection() {
           },
         });
         itineraryDirectionsRenderer.setDirections(res);
-
-        const order = (res.routes[0].waypoint_order || []).map(i => waypointItems[i]);
-        const orderedPoints = [points[si], ...order, points[ei]];
-        _renderDayMarkersInOrder(orderedPoints);
+        _renderDayMarkersInOrder(points);
         return;
       }
 

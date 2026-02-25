@@ -189,6 +189,7 @@
   let chatHistory = [];
   let welcomeShown = false;
   let itineraryDayPlansState = [];
+  const poiOpenTimeCache = new Map();
 
   const AI_WELCOME = `Hi!
 I can help you create a personalized Dublin travel itinerary.
@@ -255,53 +256,220 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       .replace(/'/g, '&#39;');
   }
 
+  const ITINERARY_SEQ_COLORS = ['#3b82f6', '#ec4899', '#22c55e', '#8b5cf6', '#f59e0b'];
+
+  function seqColor(index) {
+    return ITINERARY_SEQ_COLORS[(index - 1) % ITINERARY_SEQ_COLORS.length];
+  }
+
+  function haversineKm(a, b) {
+    const toRad = v => (v * Math.PI) / 180;
+    const r = 6371.0;
+    const dLat = toRad((b.lat || 0) - (a.lat || 0));
+    const dLng = toRad((b.lng || 0) - (a.lng || 0));
+    const lat1 = toRad(a.lat || 0);
+    const lat2 = toRad(b.lat || 0);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * r * Math.asin(Math.sqrt(x));
+  }
+
+  function poiOpenKey(poi, dayNum, idx) {
+    return encodeURIComponent(
+      String(
+        poi?.place_id ||
+        poi?.poi_id ||
+        `${poi?.name || 'poi'}@${dayNum || 0}#${idx || 0}`
+      )
+    );
+  }
+
+  function formatOpenTime(poi, dayNum, idx) {
+    const key = poiOpenKey(poi, dayNum, idx);
+    if (poiOpenTimeCache.has(key)) return poiOpenTimeCache.get(key);
+    const raw =
+      poi?.open_time ||
+      poi?.opening_time ||
+      poi?.opening_hours_text ||
+      poi?.opening_hours ||
+      poi?.business_hours;
+    if (!raw) return 'Open time unavailable';
+    return String(raw);
+  }
+
+  function _extractTodayOpenTimeFromPlace(place) {
+    if (!place) return null;
+    const oh = place.current_opening_hours || place.opening_hours;
+    if (!oh) return null;
+
+    if (Array.isArray(oh.weekday_text) && oh.weekday_text.length > 0) {
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const today = dayNames[new Date().getDay()];
+      const line = oh.weekday_text.find(x => String(x || '').startsWith(today));
+      if (line) {
+        const parts = String(line).split(':');
+        if (parts.length >= 2) return parts.slice(1).join(':').trim();
+      }
+      return String(oh.weekday_text[0] || '').trim() || null;
+    }
+    if (typeof oh.open_now === 'boolean') return oh.open_now ? 'Open now' : 'Closed now';
+    return null;
+  }
+
+  function _getPlaceOpenTimeByPlaceId(placeId, cb) {
+    if (!placeId || !placesService || !window.google || !google.maps || !google.maps.places) {
+      cb(null);
+      return;
+    }
+    placesService.getDetails(
+      {
+        placeId,
+        fields: ['opening_hours', 'current_opening_hours'],
+      },
+      (place, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
+          cb(null);
+          return;
+        }
+        cb(_extractTodayOpenTimeFromPlace(place));
+      }
+    );
+  }
+
+  function _hydrateOpenTimesForPlan(plan, layoutEl) {
+    if (!plan || !layoutEl) return;
+    const pois = Array.isArray(plan.pois) ? plan.pois : [];
+    if (!pois.length) return;
+
+    pois.forEach((poi, idx) => {
+      const key = poiOpenKey(poi, plan.day, idx);
+      if (poiOpenTimeCache.has(key)) return;
+
+      const placeId = poi?.place_id || poi?.placeId;
+      if (!placeId) return;
+
+      _getPlaceOpenTimeByPlaceId(placeId, (openText) => {
+        if (!openText) return;
+        poiOpenTimeCache.set(key, openText);
+        const node = layoutEl.querySelector('[data-open-key="' + key + '"]');
+        if (node) node.textContent = 'Open: ' + openText;
+      });
+    });
+  }
+
+  function getPlanByDay(dayPlans, dayNum) {
+    return dayPlans.find(p => Number(p.day) === Number(dayNum)) || dayPlans[0];
+  }
+
+  function renderDayDetailTimeline(plan) {
+    const pois = Array.isArray(plan?.pois) ? plan.pois : [];
+    if (pois.length === 0) return '<div class="ai-itinerary-empty">No places for this day.</div>';
+
+    let html = '<div class="ai-itinerary-timeline">';
+    for (let i = 0; i < pois.length; i++) {
+      const poi = pois[i] || {};
+      const seq = i + 1;
+      const color = seqColor(seq);
+      const poiName = escapeHtml(poi.name || 'Unnamed POI');
+      html += (
+        '<div class="ai-tl-item">' +
+          '<div class="ai-tl-badge" style="background:' + color + ';">' + seq + '</div>' +
+          '<div class="ai-tl-content">' +
+            '<button type="button" class="ai-itinerary-poi-btn ai-itinerary-poi-btn-detail" data-day="' + escapeHtml(plan.day) + '" data-poi-index="' + i + '" style="--poi-accent:' + color + ';">' +
+              poiName +
+            '</button>' +
+            '<div class="ai-tl-open" data-open-key="' + poiOpenKey(poi, plan.day, i) + '">Open: ' + escapeHtml(formatOpenTime(poi, plan.day, i)) + '</div>' +
+          '</div>' +
+        '</div>'
+      );
+
+      if (i < pois.length - 1) {
+        const a = { lat: Number(poi.latitude), lng: Number(poi.longitude) };
+        const bPoi = pois[i + 1] || {};
+        const b = { lat: Number(bPoi.latitude), lng: Number(bPoi.longitude) };
+        let kmText = '-- km';
+        if (Number.isFinite(a.lat) && Number.isFinite(a.lng) && Number.isFinite(b.lat) && Number.isFinite(b.lng)) {
+          kmText = haversineKm(a, b).toFixed(2) + ' km';
+        }
+        html += (
+          '<div class="ai-tl-sep">' +
+            '<div class="ai-tl-dash"></div>' +
+            '<div class="ai-tl-dist">' + kmText + '</div>' +
+          '</div>'
+        );
+      }
+    }
+    html += '</div>';
+    return html;
+  }
+
   function renderItineraryHtml(dayPlans) {
     if (!Array.isArray(dayPlans) || dayPlans.length === 0) {
       return '<div class="ai-itinerary-empty">No itinerary available yet.</div>';
     }
-    return dayPlans.map((plan, idx) => {
+    const activeDay = Number(dayPlans[0]?.day || 1);
+    const activePlan = getPlanByDay(dayPlans, activeDay);
+    const leftHtml = dayPlans.map((plan) => {
       const pois = Array.isArray(plan.pois) ? plan.pois : [];
-      const indexed = pois.map((p, i) => ({ p, i }));
-      const must = indexed.filter(x => x.p && x.p.is_must_visit);
-      const rec = indexed.filter(x => x.p && !x.p.is_must_visit);
-      function renderPoiItem(x) {
-        const poi = x.p || {};
-        const poiName = escapeHtml(poi.name || 'Unnamed POI');
-        const day = escapeHtml(plan.day);
-        const poiIndex = escapeHtml(x.i);
+      const listHtml = pois.map((poi, i) => {
+        const name = escapeHtml((poi && poi.name) || 'Unnamed POI');
         return (
           '<li>' +
-            '<button type="button" class="ai-itinerary-poi-btn" data-day="' + day + '" data-poi-index="' + poiIndex + '">' +
-              '<span class="ai-itinerary-poi-name">' + poiName + '</span>' +
+            '<button type="button" class="ai-itinerary-poi-btn ai-itinerary-poi-btn-left" data-day="' + escapeHtml(plan.day) + '" data-poi-index="' + i + '">' +
+              '<span class="ai-itinerary-poi-name">' + name + '</span>' +
             '</button>' +
           '</li>'
         );
-      }
-      const mustHtml = must.length
-        ? '<div class="ai-itinerary-section-title">Must Visit</div><ul class="ai-itinerary-list">' +
-          must.map(renderPoiItem).join('') +
-          '</ul>'
-        : '';
-      const recHtml = rec.length
-        ? '<div class="ai-itinerary-section-title">Recommended</div><ul class="ai-itinerary-list">' +
-          rec.map(renderPoiItem).join('') +
-          '</ul>'
-        : '';
-      const dayLabel = 'Day ' + escapeHtml(plan.day);
+      }).join('');
       return (
-        '<div class="ai-itinerary-day" data-day="' + escapeHtml(plan.day) + '">' +
-          '<div class="ai-itinerary-day-head" data-day="' + escapeHtml(plan.day) + '">' + dayLabel + ' ▸</div>' +
+        '<div class="ai-itinerary-day' + (Number(plan.day) === activeDay ? ' ai-itinerary-day-active' : '') + '" data-day="' + escapeHtml(plan.day) + '">' +
+          '<div class="ai-itinerary-day-head">Day ' + escapeHtml(plan.day) + ' ▸</div>' +
           '<div class="ai-itinerary-day-body">' +
-            mustHtml +
-            recHtml +
+            '<ul class="ai-itinerary-list">' + listHtml + '</ul>' +
           '</div>' +
         '</div>'
       );
     }).join('');
+
+    const rightHtml =
+      '<div class="ai-itinerary-detail-head">Day ' + escapeHtml(activePlan.day) + ' Details</div>' +
+      renderDayDetailTimeline(activePlan);
+
+    return (
+      '<div class="ai-itinerary-layout" data-active-day="' + escapeHtml(activeDay) + '">' +
+        '<div class="ai-itinerary-left">' + leftHtml + '</div>' +
+        '<div class="ai-itinerary-right">' + rightHtml + '</div>' +
+      '</div>'
+    );
   }
 
   function bindItineraryDayEvents(wrap) {
     if (!wrap) return;
+    const layoutEl = wrap.querySelector('.ai-itinerary-layout');
+    if (!layoutEl) return;
+
+    function setActiveDay(day) {
+      const dayNum = Number(day);
+      if (!Number.isFinite(dayNum)) return;
+      layoutEl.dataset.activeDay = String(dayNum);
+      window.__pendingItineraryCurrentDay = dayNum;
+      layoutEl.querySelectorAll('.ai-itinerary-day').forEach(el => {
+        el.classList.toggle('ai-itinerary-day-active', Number(el.dataset.day) === dayNum);
+      });
+      const plan = getPlanByDay(itineraryDayPlansState, dayNum);
+      const rightEl = layoutEl.querySelector('.ai-itinerary-right');
+      if (plan && rightEl) {
+        rightEl.innerHTML =
+          '<div class="ai-itinerary-detail-head">Day ' + escapeHtml(plan.day) + ' Details</div>' +
+          renderDayDetailTimeline(plan);
+        _hydrateOpenTimesForPlan(plan, layoutEl);
+      }
+      if (typeof window.setItineraryDayPlans === 'function') {
+        window.setItineraryDayPlans(itineraryDayPlansState, dayNum);
+      } else if (typeof window.setCurrentItineraryDay === 'function') {
+        window.setCurrentItineraryDay(dayNum);
+      }
+    }
+
     wrap.querySelectorAll('.ai-itinerary-day').forEach(dayEl => {
       dayEl.addEventListener('click', function(e) {
         // 点 POI 文字按钮时保持“跳转 Search panel”；其余区域（含 Day 标题）切换当天路线
@@ -320,29 +488,34 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         void this.offsetWidth;
         this.classList.add('ai-ripple-active');
         setTimeout(() => this.classList.remove('ai-ripple-active'), 820);
-
-        const day = Number(this.dataset.day);
-        if (Number.isFinite(day) && typeof window.setCurrentItineraryDay === 'function') {
-          window.setCurrentItineraryDay(day);
-        }
+        setActiveDay(this.dataset.day);
       });
     });
 
-    wrap.querySelectorAll('.ai-itinerary-poi-btn').forEach(btn => {
-      btn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const day = Number(this.dataset.day);
-        const poiIndex = Number(this.dataset.poiIndex);
-        if (!Number.isFinite(day) || !Number.isFinite(poiIndex)) return;
-        if (typeof window.focusItineraryPoi === 'function') {
-          window.focusItineraryPoi(day, poiIndex);
-        } else if (typeof window.setCurrentItineraryDay === 'function') {
-          // 回退：至少先切到对应日期
-          window.setCurrentItineraryDay(day);
-        }
-      });
+    function handlePoiButtonClick(btn, e) {
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const day = Number(btn.dataset.day);
+      const poiIndex = Number(btn.dataset.poiIndex);
+      if (!Number.isFinite(day) || !Number.isFinite(poiIndex)) return;
+      setActiveDay(day);
+      if (typeof window.focusItineraryPoi === 'function') {
+        window.focusItineraryPoi(day, poiIndex);
+      } else if (typeof window.setCurrentItineraryDay === 'function') {
+        window.setCurrentItineraryDay(day);
+      }
+    }
+
+    // 仅右侧详情面板 POI 名称可跳转 Search panel
+    wrap.addEventListener('click', function(e) {
+      const btn = e.target.closest('.ai-itinerary-poi-btn-detail');
+      if (!btn) return;
+      handlePoiButtonClick(btn, e);
     });
+
+    // 默认右侧打开 Day 1（或第一天）
+    setActiveDay(layoutEl.dataset.activeDay || 1);
   }
 
   async function fetchAndRenderItinerary(tripId) {
@@ -355,6 +528,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         return;
       }
       itineraryDayPlansState = Array.isArray(data.day_plans) ? data.day_plans : [];
+      window.__pendingItineraryDayPlans = itineraryDayPlansState;
+      window.__pendingItineraryCurrentDay = 1;
       const html = renderItineraryHtml(itineraryDayPlansState);
       setBubbleHtmlContent(placeholderWrap, html);
       bindItineraryDayEvents(placeholderWrap);

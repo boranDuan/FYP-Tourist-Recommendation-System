@@ -88,6 +88,31 @@ body.show-ai-panel #ai-panel {
   color: #6b7280;
 }
 
+.ai-itinerary-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 44%) 1fr;
+  gap: 12px;
+}
+
+.ai-itinerary-left {
+  min-width: 0;
+}
+
+.ai-itinerary-right {
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.ai-itinerary-detail-head {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 10px;
+}
+
 .ai-itinerary-day {
   margin: 8px 0;
   border: 1px solid #e5e7eb;
@@ -102,6 +127,12 @@ body.show-ai-panel #ai-panel {
 .ai-itinerary-day:hover {
   border-color: #bfdbfe;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.ai-itinerary-day.ai-itinerary-day-active {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+  background: #f8fbff;
 }
 
 .ai-itinerary-day-head {
@@ -142,14 +173,6 @@ body.show-ai-panel #ai-panel {
   padding: 2px 12px 10px;
 }
 
-.ai-itinerary-section-title {
-  margin-top: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #4b5563;
-  text-transform: uppercase;
-}
-
 .ai-itinerary-list {
   margin: 6px 0 0;
   padding-left: 18px;
@@ -172,8 +195,8 @@ body.show-ai-panel #ai-panel {
   color: inherit;
 }
 
-.ai-itinerary-poi-btn:hover .ai-itinerary-poi-name {
-  text-decoration: underline;
+.ai-itinerary-poi-btn-detail:hover {
+  text-decoration: none;
 }
 
 .ai-itinerary-poi-index {
@@ -185,6 +208,74 @@ body.show-ai-panel #ai-panel {
 
 .ai-itinerary-poi-name {
   font-size: 14px;
+}
+
+.ai-itinerary-poi-btn-detail {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  transition: color 0.2s ease;
+}
+
+.ai-itinerary-poi-btn-detail:hover {
+  color: var(--poi-accent, #2563eb);
+}
+
+.ai-itinerary-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-tl-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ai-tl-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.ai-tl-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-tl-open {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.ai-tl-sep {
+  margin-left: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.ai-tl-dash {
+  height: 18px;
+  border-left: 2px dashed #cbd5e1;
+}
+
+.ai-tl-dist {
+  font-size: 12px;
+  color: #6b7280;
+  margin-left: 12px;
 }
 
 /* 加载占位（三个点） */
