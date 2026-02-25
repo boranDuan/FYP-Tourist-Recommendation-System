@@ -43,6 +43,7 @@ EXCLUDED_POI_NAMES = [
     "Aviva Stadium",
     "RDS Arena",
     "Lansdowne Road",
+    "Hugh Lane Gallery",
 ]
 
 

@@ -535,22 +535,65 @@ def _compute_candidates_and_itinerary(pref, limit=200):
         g.setdefault("score", None)
         g["source"] = "google"
 
-    # 同园区去重半径（km）：用于避免 must-visit 与 nearby 推荐点重复
+    # 邻域去重半径（km）：用于避免 must-visit 与推荐点、推荐点彼此重复
     try:
         must_visit_dedup_radius_km = float(os.getenv("MUST_VISIT_DEDUP_RADIUS_KM", "0.35"))
     except (TypeError, ValueError):
         must_visit_dedup_radius_km = 0.35
 
+    # 推荐全局邻域去重半径（默认沿用 must-visit 半径）
+    try:
+        recommend_dedup_radius_km = float(
+            os.getenv("RECOMMEND_DEDUP_RADIUS_KM", str(must_visit_dedup_radius_km))
+        )
+    except (TypeError, ValueError):
+        recommend_dedup_radius_km = must_visit_dedup_radius_km
+
+    def _nearby_keep_key(poi):
+        """
+        邻域冲突时的保留优先级（高 -> 低）：
+        1) Google 点优先（避免误删 must-visit）
+        2) 地标主点关键词优先（定向修复 Trinity 被子点挤掉）
+        3) score 更高优先
+        """
+        name = _canonical_poi_name(poi.get("name"))
+        landmark_hit = 1 if "trinity college" in name else 0
+        is_google = 1 if poi.get("source") == "google" else 0
+        score = poi.get("score")
+        try:
+            score = float(score) if score is not None else -1.0
+        except (TypeError, ValueError):
+            score = -1.0
+        return (is_google, landmark_hit, score)
+
     final_pois = list(google_must_visits)
     for p in pois_data:
-        if any(_is_same_location(p, g, threshold_km=must_visit_dedup_radius_km) for g in google_must_visits):
+        p["source"] = "local"
+        # 邻域冲突改为“挑代表点”，不再先到先得。
+        conflict_indices = [
+            i for i, kept in enumerate(final_pois)
+            if _is_same_location(p, kept, threshold_km=recommend_dedup_radius_km)
+        ]
+        if not conflict_indices:
+            final_pois.append(p)
+            continue
+
+        conflict_pois = [final_pois[i] for i in conflict_indices] + [p]
+        best = max(conflict_pois, key=_nearby_keep_key)
+        if best is p:
+            # 新点更适合作为代表点：替换掉冲突旧点
+            for i in sorted(conflict_indices, reverse=True):
+                removed = final_pois.pop(i)
+                if _dedup_debug_enabled():
+                    _dedup_debug(
+                        f"replace nearby keep='{p.get('name')}' drop='{removed.get('name')}' radius_km={recommend_dedup_radius_km}"
+                    )
+            final_pois.append(p)
+        else:
             if _dedup_debug_enabled():
                 _dedup_debug(
-                    f"skip nearby-to-must-visit local='{p.get('name')}' radius_km={must_visit_dedup_radius_km}"
+                    f"skip nearby-to-selected local='{p.get('name')}' keep='{best.get('name')}' radius_km={recommend_dedup_radius_km}"
                 )
-            continue
-        p["source"] = "local"
-        final_pois.append(p)
     # 同名族分组 + 空间聚类去重
     final_pois = _dedupe_pois_identity_geo(final_pois)
     final_pois = final_pois[:limit]
