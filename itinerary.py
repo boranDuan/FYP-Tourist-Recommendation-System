@@ -109,13 +109,6 @@ MAX_DAY_HOURS = {
     'intensive': 8.0,
 }
 
-# 允许超出的时长（h），使分配更灵活
-FLEXIBLE_BUFFER = {
-    'relaxed': 0.5,
-    'balanced': 1.0,
-    'intensive': 1.5,
-}
-
 # 每日景点数量上限（主约束）
 PACE_TO_DAILY_POI_CAP = {
     'relaxed': 3,
@@ -155,8 +148,51 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return r * c
 
 
+def _path_total_distance(path):
+    """开放路径总长度（不回到起点）。"""
+    if len(path) <= 1:
+        return 0.0
+    total = 0.0
+    for i in range(len(path) - 1):
+        a = path[i]
+        b = path[i + 1]
+        total += _haversine_km(
+            float(a.get('latitude') or 0.0),
+            float(a.get('longitude') or 0.0),
+            float(b.get('latitude') or 0.0),
+            float(b.get('longitude') or 0.0),
+        )
+    return total
+
+
+def _two_opt_open_path(path):
+    """
+    对开放路径做 2-opt 局部优化，减少折返和交叉。
+    小规模日程点位下可显著提升“顺路感”。
+    """
+    n = len(path)
+    if n < 4:
+        return path
+
+    best = list(path)
+    improved = True
+    while improved:
+        improved = False
+        best_dist = _path_total_distance(best)
+        # 保持首尾不动，仅优化中间段，避免起终点频繁跳变
+        for i in range(1, n - 2):
+            for j in range(i + 1, n - 1):
+                candidate = best[:i] + list(reversed(best[i:j + 1])) + best[j + 1:]
+                cand_dist = _path_total_distance(candidate)
+                if cand_dist + 1e-9 < best_dist:
+                    best = candidate
+                    improved = True
+                    best_dist = cand_dist
+    return best
+
+
 def optimize_route_greedy_tsp(day_pois):
-    """贪心 TSP：从离当日中心最近点开始，每次选最近的下一个未访问点。"""
+    """贪心 TSP + 2-opt：先近邻构造，再局部去交叉。"""
     if len(day_pois) <= 2:
         return day_pois
     center = _center_of_pois(day_pois)
@@ -179,7 +215,7 @@ def optimize_route_greedy_tsp(day_pois):
                 best_dist = d
                 best_idx = i
         path.append(remaining.pop(best_idx))
-    return path
+    return _two_opt_open_path(path)
 
 
 def _poi_distance_to_point(poi, lat, lng):
@@ -222,11 +258,6 @@ def _poi_rank_score(poi):
         return float(raw or 0.0)
     except (TypeError, ValueError):
         return 0.0
-
-
-def _passes_allocation_quality_gate(poi):
-    """分天前质量闸门：低于阈值的不再用于补位。"""
-    return _poi_rank_score(poi) >= MIN_ALLOCATION_SCORE
 
 
 def _adaptive_allocation_score_threshold(remaining_pois, trip_days, daily_poi_cap):

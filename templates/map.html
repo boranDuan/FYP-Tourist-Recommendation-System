@@ -180,6 +180,8 @@ let CONFIG = {};
 let geocoder = null;
 let itineraryDayMarkers = [];
 let itineraryDayPolyline = null;
+let itineraryDirectionsService = null;
+let itineraryDirectionsRenderer = null;
 let itineraryDayPlans = [];
 let currentDay = 1;
 
@@ -268,6 +270,7 @@ function initMap(){
   // 初始状态不显示任何 marker
 
   geocoder = new google.maps.Geocoder();
+  itineraryDirectionsService = new google.maps.DirectionsService();
 
   // 自动定位到用户的当前地理位置
   if (navigator.geolocation) {
@@ -501,10 +504,73 @@ function initMap(){
 function clearItineraryProjection() {
   itineraryDayMarkers.forEach(m => m.setMap(null));
   itineraryDayMarkers = [];
+  if (itineraryDirectionsRenderer) {
+    itineraryDirectionsRenderer.setMap(null);
+    itineraryDirectionsRenderer = null;
+  }
   if (itineraryDayPolyline) {
     itineraryDayPolyline.setMap(null);
     itineraryDayPolyline = null;
   }
+}
+
+function _haversineKmJs(a, b) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const r = 6371.0;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(x));
+}
+
+function _pickFarthestEndpoints(points) {
+  if (!Array.isArray(points) || points.length < 2) return [0, 0];
+  let bi = 0;
+  let bj = points.length - 1;
+  let best = -1;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const d = _haversineKmJs(points[i].pos, points[j].pos);
+      if (d > best) {
+        best = d;
+        bi = i;
+        bj = j;
+      }
+    }
+  }
+  return [bi, bj];
+}
+
+function _renderDayMarkersInOrder(orderedPoints) {
+  orderedPoints.forEach((item, idx) => {
+    const poi = item.poi;
+    const pos = item.pos;
+    const isMust = !!poi.is_must_visit;
+    const marker = new google.maps.Marker({
+      map,
+      position: pos,
+      title: poi.name || `POI ${idx + 1}`,
+      label: {
+        text: String(idx + 1),
+        color: '#ffffff',
+        fontSize: '11px',
+        fontWeight: '600',
+      },
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: isMust ? 9 : 7,
+        fillColor: isMust ? '#b00020' : '#ff4d4f',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+      },
+      zIndex: isMust ? 2000 : 1500,
+    });
+    marker.addListener('click', () => handleItineraryMarkerClick(poi));
+    itineraryDayMarkers.push(marker);
+  });
 }
 
 function openSearchPanelFromMap() {
@@ -613,49 +679,82 @@ function renderCurrentDayProjection() {
     const lat = Number(poi.latitude);
     const lng = Number(poi.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    const pos = { lat, lng };
-    points.push(pos);
-    const isMust = !!poi.is_must_visit;
-    const marker = new google.maps.Marker({
-      map,
-      position: pos,
-      title: poi.name || `POI ${idx + 1}`,
-      label: {
-        text: String(idx + 1),
-        color: '#ffffff',
-        fontSize: '11px',
-        fontWeight: '600',
-      },
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: isMust ? 9 : 7,
-        fillColor: isMust ? '#b00020' : '#ff4d4f',
-        fillOpacity: 1,
-        strokeColor: '#ffffff',
-        strokeWeight: 2,
-      },
-      zIndex: isMust ? 2000 : 1500,
-    });
-    marker.addListener('click', () => handleItineraryMarkerClick(poi));
-    itineraryDayMarkers.push(marker);
+    points.push({ poi, pos: { lat, lng } });
   });
 
-  if (points.length >= 2) {
-    itineraryDayPolyline = new google.maps.Polyline({
-      map,
-      path: points,
-      geodesic: true,
-      strokeColor: '#d50000',
-      strokeOpacity: 1.0,
-      strokeWeight: 4,
-    });
+  if (points.length === 0) return;
+  if (points.length === 1) {
+    _renderDayMarkersInOrder(points);
+    map.panTo(points[0].pos);
+    map.setZoom(Math.max(map.getZoom() || 12, 15));
+    return;
   }
 
-  if (points.length > 0) {
-    const bounds = new google.maps.LatLngBounds();
-    points.forEach(p => bounds.extend(p));
-    map.fitBounds(bounds, 60);
+  // 使用 Directions API 渲染“真实道路路线”，并自动优化中间点顺序。
+  if (itineraryDirectionsService) {
+    const [si, ei] = _pickFarthestEndpoints(points);
+    const origin = points[si].pos;
+    const destination = points[ei].pos;
+    const waypointItems = points.filter((_, idx) => idx !== si && idx !== ei);
+    const waypoints = waypointItems.map(x => ({ location: x.pos, stopover: true }));
+    const request = {
+      origin,
+      destination,
+      waypoints,
+      optimizeWaypoints: true,
+      travelMode: google.maps.TravelMode.WALKING,
+    };
+
+    itineraryDirectionsService.route(request, (res, status) => {
+      if (status === google.maps.DirectionsStatus.OK && res && res.routes && res.routes[0]) {
+        itineraryDirectionsRenderer = new google.maps.DirectionsRenderer({
+          map,
+          suppressMarkers: true,
+          preserveViewport: false,
+          polylineOptions: {
+            strokeColor: '#d50000',
+            strokeOpacity: 1.0,
+            strokeWeight: 4,
+          },
+        });
+        itineraryDirectionsRenderer.setDirections(res);
+
+        const order = (res.routes[0].waypoint_order || []).map(i => waypointItems[i]);
+        const orderedPoints = [points[si], ...order, points[ei]];
+        _renderDayMarkersInOrder(orderedPoints);
+        return;
+      }
+
+      // Directions 失败时回退直线连点（按分数/分配顺序）
+      _renderDayMarkersInOrder(points);
+      itineraryDayPolyline = new google.maps.Polyline({
+        map,
+        path: points.map(x => x.pos),
+        geodesic: true,
+        strokeColor: '#d50000',
+        strokeOpacity: 1.0,
+        strokeWeight: 4,
+      });
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach(p => bounds.extend(p.pos));
+      map.fitBounds(bounds, 60);
+    });
+    return;
   }
+
+  // 无 DirectionsService 时回退
+  _renderDayMarkersInOrder(points);
+  itineraryDayPolyline = new google.maps.Polyline({
+    map,
+    path: points.map(x => x.pos),
+    geodesic: true,
+    strokeColor: '#d50000',
+    strokeOpacity: 1.0,
+    strokeWeight: 4,
+  });
+  const bounds = new google.maps.LatLngBounds();
+  points.forEach(p => bounds.extend(p.pos));
+  map.fitBounds(bounds, 60);
 }
 
 function setItineraryDayPlans(dayPlans, dayNum) {
