@@ -448,6 +448,137 @@ def _get_trip_days(preference):
         return 3
 
 
+DUBLIN_CENTER = (53.3498, -6.2603)
+
+
+def apply_distance_decay(score, distance_km, center_type):
+    """
+    软距离衰减：
+    - decay = exp(-distance_km / D)
+    - floor: decay >= 0.1
+    - must_visit 中心：3km 内不衰减
+    - D: trip_center=6.0, dublin_fallback=8.0
+    """
+    try:
+        base_score = float(score or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if base_score <= 0:
+        return 0.0
+
+    try:
+        d = float(distance_km)
+    except (TypeError, ValueError):
+        return base_score
+    if d < 0:
+        return base_score
+
+    if center_type == "must_visit" and d < 3.0:
+        decay = 1.0
+    else:
+        d_const = 8.0 if center_type == "dublin_fallback" else 6.0
+        decay = math.exp(-d / d_const)
+        decay = max(0.1, decay)
+
+    return base_score * decay
+
+
+def _avg_coords(items):
+    lats = []
+    lngs = []
+    for item in items or []:
+        la = item.get("latitude")
+        lo = item.get("longitude")
+        if la is None or lo is None:
+            continue
+        try:
+            lats.append(float(la))
+            lngs.append(float(lo))
+        except (TypeError, ValueError):
+            continue
+    if not lats:
+        return None
+    return sum(lats) / len(lats), sum(lngs) / len(lngs)
+
+
+def _popularity_score_from_poi(poi):
+    rating = getattr(poi, "google_rating", None)
+    ratings_total = getattr(poi, "google_ratings_total", None)
+    if not rating or ratings_total is None or ratings_total == 0:
+        return 0.0
+    try:
+        rating = float(rating)
+        ratings_total = int(ratings_total)
+    except (TypeError, ValueError):
+        return 0.0
+    if ratings_total <= 0:
+        return 0.0
+    ratings_log = math.log10(max(1, ratings_total))
+    ratings_score = min(1.0, ratings_log / 5.0)
+    rating_score = max(0.0, min(1.0, (rating - 4.0) / 1.0))
+    return ratings_score * 0.8 + rating_score * 0.2
+
+
+def _passes_low_popularity_gate(poi, pop_score, base_score):
+    """
+    低知名度硬门槛（仅用于本地推荐候选）：
+    - 默认要求 popularity_score >= 0.30 且 google_ratings_total >= 80
+    - 若综合分非常高（base_score >= 0.75），允许放行，避免误伤强兴趣点
+    阈值可通过环境变量调整：
+    - MIN_POPULARITY_SCORE
+    - MIN_GOOGLE_RATINGS_TOTAL
+    - HIGH_BASE_SCORE_BYPASS
+    """
+    try:
+        min_pop_score = float(os.getenv("MIN_POPULARITY_SCORE", "0.30"))
+    except (TypeError, ValueError):
+        min_pop_score = 0.30
+    try:
+        min_ratings_total = int(os.getenv("MIN_GOOGLE_RATINGS_TOTAL", "80"))
+    except (TypeError, ValueError):
+        min_ratings_total = 80
+    try:
+        high_score_bypass = float(os.getenv("HIGH_BASE_SCORE_BYPASS", "0.75"))
+    except (TypeError, ValueError):
+        high_score_bypass = 0.75
+
+    if float(base_score or 0.0) >= high_score_bypass:
+        return True
+
+    raw_total = getattr(poi, "google_ratings_total", None)
+    try:
+        ratings_total = int(raw_total) if raw_total is not None else 0
+    except (TypeError, ValueError):
+        ratings_total = 0
+
+    return float(pop_score or 0.0) >= min_pop_score and ratings_total >= min_ratings_total
+
+
+def _compute_trip_center(google_must_visits, pois):
+    must_center = _avg_coords(google_must_visits)
+    if must_center is not None:
+        return must_center, "must_visit"
+
+    pop_ranked = []
+    for poi in pois:
+        if getattr(poi, "latitude", None) is None or getattr(poi, "longitude", None) is None:
+            continue
+        pop = _popularity_score_from_poi(poi)
+        if pop > 0:
+            pop_ranked.append((poi, pop))
+    pop_ranked.sort(key=lambda x: x[1], reverse=True)
+
+    top5 = [{
+        "latitude": getattr(p, "latitude", None),
+        "longitude": getattr(p, "longitude", None),
+    } for p, _ in pop_ranked[:5]]
+    pop_center = _avg_coords(top5)
+    if pop_center is not None:
+        return pop_center, "trip_center"
+
+    return DUBLIN_CENTER, "dublin_fallback"
+
+
 def _compute_candidates_and_itinerary(pref, limit=200):
     """
     根据 TripPreference 计算候选 POI 与分天行程。
@@ -457,31 +588,55 @@ def _compute_candidates_and_itinerary(pref, limit=200):
     if not interests or not any(v and float(v) > 0 for v in interests.values()):
         return None
 
-    DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON = 53.3498, -6.2603
-    DUBLIN_RADIUS_KM = 30.0
-    DUBLIN_COUNTIES = {"Dublin", "Dublin City", "Dún Laoghaire-Rathdown", "Fingal", "South Dublin"}
+    try:
+        import googlemaps
+        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
+    except Exception:
+        gmaps = None
+
+    # Must-visit：直接用 Google Places 数据，不匹配本地 DB
+    from preference_matching import resolve_specific_places_to_google_data
+    google_must_visits = resolve_specific_places_to_google_data(
+        getattr(pref, "specific_places", None) or "", gmaps_client=gmaps
+    )
+    for g in google_must_visits:
+        g.setdefault("filter_ids", [])
+        g.setdefault("score", None)
+        g["source"] = "google"
 
     pois = POI.query.all()
+    trip_center, center_type = _compute_trip_center(google_must_visits, pois)
     scored = []
     for poi in pois:
-        in_county = getattr(poi, "county", None) in DUBLIN_COUNTIES
-        in_radius = False
-        if poi.latitude is not None and poi.longitude is not None:
-            try:
-                dist_km = _haversine_km(float(poi.latitude), float(poi.longitude), DUBLIN_CENTER_LAT, DUBLIN_CENTER_LON)
-                in_radius = dist_km <= DUBLIN_RADIUS_KM
-            except (TypeError, ValueError):
-                in_radius = False
-        if not in_county and not in_radius:
-            continue
         poi_filter_ids = [f.filter_id for f in poi.filters]
         interest_score = calculate_poi_score(poi.poi_id, poi_filter_ids, interests)
         if interest_score > 0:
-            score = calculate_final_score_with_popularity(
+            base_score = calculate_final_score_with_popularity(
                 interest_score,
                 getattr(poi, "google_rating", None),
                 getattr(poi, "google_ratings_total", None),
+                interests,
             )
+            pop_score = _popularity_score_from_poi(poi)
+            if not _passes_low_popularity_gate(poi, pop_score, base_score):
+                continue
+            if poi.latitude is not None and poi.longitude is not None:
+                try:
+                    dist_to_trip_center = _haversine_km(
+                        float(poi.latitude),
+                        float(poi.longitude),
+                        float(trip_center[0]),
+                        float(trip_center[1]),
+                    )
+                except (TypeError, ValueError):
+                    dist_to_trip_center = None
+            else:
+                dist_to_trip_center = None
+
+            score = apply_distance_decay(base_score, dist_to_trip_center, center_type)
+            # 低知名度软降权（不硬过滤）：减少“名气很弱”的点混入 day plan
+            if pop_score < 0.25:
+                score *= 0.85
             scored.append((poi, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -503,12 +658,6 @@ def _compute_candidates_and_itinerary(pref, limit=200):
             "suitable_for_seniors": getattr(poi, "suitable_for_seniors", None),
         })
 
-    try:
-        import googlemaps
-        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
-    except Exception:
-        gmaps = None
-
     num_children = (pref.num_children or 0) if pref else 0
     num_seniors = (pref.num_seniors or 0) if pref else 0
     if num_children > 0 or num_seniors > 0:
@@ -524,17 +673,6 @@ def _compute_candidates_and_itinerary(pref, limit=200):
         pois_data = apply_avoid_filter(poi_list=pois_data, avoid_list=avoid_list, all_filters=all_filters)
 
     pois_data = filter_unwanted_pois(pois_data)
-
-    # Must-visit：直接用 Google Places 数据，不匹配本地 DB
-    from preference_matching import resolve_specific_places_to_google_data
-    google_must_visits = resolve_specific_places_to_google_data(
-        getattr(pref, "specific_places", None) or "", gmaps_client=gmaps
-    )
-    # 补全 allocate/get_poi_duration 所需字段
-    for g in google_must_visits:
-        g.setdefault("filter_ids", [])
-        g.setdefault("score", None)
-        g["source"] = "google"
 
     # 邻域去重半径（km）：用于避免 must-visit 与推荐点、推荐点彼此重复
     try:

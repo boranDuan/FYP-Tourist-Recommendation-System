@@ -96,23 +96,33 @@ def calculate_popularity_score(rating, ratings_total):
     return ratings_score * 0.8 + rating_score * 0.2
 
 
-def calculate_final_score_with_popularity(interest_score, google_rating=None, google_ratings_total=None):
+def calculate_final_score_with_popularity(interest_score, google_rating=None, google_ratings_total=None, interests=None):
     """
-    综合评分 = 兴趣匹配 × (1 + 知名度加成)
-    无 Google 数据时，保留 70%。
+    综合评分（线性加权）：
+    - 默认：final = interest_score * 0.65 + popularity_score * 0.35
+    - 单兴趣模式（max(interests.values()) >= 0.9）：
+      final = popularity_score * 0.7 + interest_score * 0.3
     """
-    if not google_ratings_total or google_ratings_total == 0:
-        return interest_score * 0.7
     popularity_score = calculate_popularity_score(google_rating, google_ratings_total)
-    final_score = interest_score * (1.0 + popularity_score * 0.8)
-    #final_score = interest_score + (1.0 - interest_score) * popularity_score * 0.35
-    return min(1.0, final_score)
+    single_interest_mode = False
+    if isinstance(interests, dict) and interests:
+        try:
+            single_interest_mode = max(float(v or 0.0) for v in interests.values()) >= 0.9
+        except (TypeError, ValueError):
+            single_interest_mode = False
+
+    if single_interest_mode:
+        final_score = popularity_score * 0.7 + float(interest_score or 0.0) * 0.3
+    else:
+        final_score = float(interest_score or 0.0) * 0.65 + popularity_score * 0.35
+
+    return max(0.0, min(1.0, final_score))
 
 
 def calculate_poi_score(poi_id, poi_filter_ids, interests):
     """
-    饱和模型：score = 1 - Π(1 - weight_i)
-    避免多维度匹配导致分数虚高
+    兴趣分数（非饱和）：
+    interest_score = Σ matched_weight / Σ all_weight
     """
     if not interests or not isinstance(interests, dict):
         return 0.0
@@ -121,32 +131,30 @@ def calculate_poi_score(poi_id, poi_filter_ids, interests):
     if not poi_filter_ids:
         return 0.0
     
-    # 收集所有匹配的兴趣权重
-    matched_weights = []
-    
+    matched_sum = 0.0
+    total_sum = 0.0
+
     for interest_key, weight in interests.items():
-        if not weight or float(weight) <= 0:
+        try:
+            weight_f = float(weight)
+        except (TypeError, ValueError):
             continue
-        
+
+        if weight_f <= 0:
+            continue
+
+        total_sum += weight_f
         related_filters = INTEREST_TO_FILTER_IDS.get(interest_key)
         if not related_filters:
             continue
-        
-        # 检查是否有filter匹配
+
         if any(fid in related_filters for fid in poi_filter_ids):
-            matched_weights.append(float(weight))
-    
-    if not matched_weights:
+            matched_sum += weight_f
+
+    if total_sum <= 0:
         return 0.0
-    
-    # 饱和模型公式: score = 1 - Π(1 - w_i)
-    product = 1.0
-    for w in matched_weights:
-        product *= (1.0 - w)
-    
-    score = 1.0 - product
-    
-    return score
+
+    return max(0.0, min(1.0, matched_sum / total_sum))
 
 
 

@@ -27,7 +27,6 @@ from preference_matching import (
     calculate_final_score_with_popularity,
     calculate_poi_score,
     filter_unwanted_pois,
-    resolve_specific_places_to_poi_ids_and_names,
 )
 from rule_based_filtering import step0_hard_filter, apply_avoid_filter
 
@@ -74,24 +73,8 @@ def run(trip_id=None, limit=None):
             nc = (pref.num_children or 0) if hasattr(pref, "num_children") else 0
             ns = (pref.num_seniors or 0) if hasattr(pref, "num_seniors") else 0
             print(f"num_children={nc}, num_seniors={ns}")
-            must_visit_raw = (getattr(pref, "specific_places", None) or "").strip()
-            if must_visit_raw:
-                try:
-                    import os
-                    import googlemaps
-                    gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY")) if os.getenv("GOOGLE_MAPS_API_KEY") else None
-                except Exception:
-                    gmaps = None
-                _, display_pairs = resolve_specific_places_to_poi_ids_and_names(
-                    must_visit_raw, POI, db, gmaps_client=gmaps
-                )
-                for raw, resolved in display_pairs:
-                    if resolved == "(unresolved)":
-                        print(f"Must visit place: {raw} (unresolved)")
-                    else:
-                        print(f"Must visit place: {resolved}")
-            else:
-                print("Must visit place: (none)")
+            # 该脚本用于“分数池观察”，不展示 must-visit 解析结果，避免与主行程脚本混淆
+            print("Must visit place: (ignored in poi_scores debug view)")
         else:
             print("No TripPreference in DB, using default interests for demo")
             interests = {"museum": 0.5, "culture": 0.5, "nature": 0.0, "shopping": 0.0, "nightlife": 0.0}
@@ -134,7 +117,8 @@ def run(trip_id=None, limit=None):
             score = calculate_final_score_with_popularity(
                 interest_score,
                 getattr(poi, 'google_rating', None),
-                getattr(poi, 'google_ratings_total', None)
+                getattr(poi, 'google_ratings_total', None),
+                interests
             )
             results.append((poi, score))
 

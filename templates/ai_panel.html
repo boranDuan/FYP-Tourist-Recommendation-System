@@ -269,11 +269,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         const poiName = escapeHtml(poi.name || 'Unnamed POI');
         const day = escapeHtml(plan.day);
         const poiIndex = escapeHtml(x.i);
-        const pLabel = 'P' + String((x.i || 0) + 1);
         return (
           '<li>' +
             '<button type="button" class="ai-itinerary-poi-btn" data-day="' + day + '" data-poi-index="' + poiIndex + '">' +
-              '<span class="ai-itinerary-poi-index">' + pLabel + '</span>' +
               '<span class="ai-itinerary-poi-name">' + poiName + '</span>' +
             '</button>' +
           '</li>'

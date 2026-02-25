@@ -1,6 +1,7 @@
 """
 Itinerary 模块：行程相关配置，如 filter 时间分类与时长。
 """
+from preference_matching import INTEREST_TO_FILTER_IDS
 
 FILTER_TIME_CATEGORY = {
     # ========== HEAVY (2.0h) ==========
@@ -113,6 +114,13 @@ FLEXIBLE_BUFFER = {
     'relaxed': 0.5,
     'balanced': 1.0,
     'intensive': 1.5,
+}
+
+# 每日景点数量上限（主约束）
+PACE_TO_DAILY_POI_CAP = {
+    'relaxed': 3,
+    'balanced': 4,
+    'intensive': 5,
 }
 
 
@@ -272,14 +280,15 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
 
     pace = getattr(preference, "pace", None) or "balanced"
     daily_hours = MAX_DAY_HOURS.get(pace, 6.5)
-    buffer = FLEXIBLE_BUFFER.get(pace, 1.0)
-    max_day_hours = daily_hours + buffer
+    daily_poi_cap = PACE_TO_DAILY_POI_CAP.get(pace, 4)
+    # 时长仅作为软兜底，不再是主约束
+    soft_day_hour_cap = max(daily_hours, daily_poi_cap * 2.5)
 
     must_visit_hours = sum(get_poi_duration(p) for p in must_visit_pois)
     base_budget = daily_hours * trip_days
     if must_visit_hours > base_budget:
         adjusted_daily = min(8.0, must_visit_hours / trip_days)
-        max_day_hours = min(max_day_hours, adjusted_daily + buffer)
+        soft_day_hour_cap = max(soft_day_hour_cap, adjusted_daily)
         warnings.append(
             f"Must-visit POIs require {must_visit_hours:.1f}h, adjusted daily pace to {adjusted_daily:.1f}h"
         )
@@ -304,10 +313,7 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
             used_ids.add(uid)
 
     # Step 2 + Step 3: 固定 anchor + 最近邻扩展（不漂移、不跨城）
-    _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, max_day_hours)
-
-    # Step 3.5: 轻量跨天优化（相邻天 swap）
-    _optimize_adjacent_day_swap(day_plans, max_day_hours)
+    _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, daily_poi_cap, soft_day_hour_cap)
 
     # Step 4: 每天合并 must_visit + recommended，TSP 优化
     result_plans = []
@@ -328,15 +334,79 @@ def allocate_pois_to_days_v3_with_must_visit(pois, must_visit_identifiers, prefe
     return result_plans, warnings
 
 
-# 地理软约束：超过此距离（km）时降低分数，但不排除
-MAX_DISTANCE_SOFT_KM = 15.0
-DISTANCE_PENALTY = 0.7
 MAX_DAY_RADIUS_KM = 10.0
 DUBLIN_CENTER = (53.3498, -6.2603)
 MAX_CITY_RADIUS_KM = 8.0
 
 
-def _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, max_day_hours):
+def _plan_anchor(plan, trip_center):
+    """动态 anchor：must_visit 中心 -> recommended 中心 -> trip_center -> Dublin center"""
+    return (
+        _center_of_pois(plan.get("must_visit") or [])
+        or _center_of_pois(plan.get("recommended") or [])
+        or trip_center
+        or DUBLIN_CENTER
+    )
+
+
+def _seed_key(poi, trip_center):
+    """seed 排序：更高分优先，距离 trip_center 次优先。"""
+    center = trip_center or DUBLIN_CENTER
+    dist = _poi_distance_to_point(poi, center[0], center[1])
+    score = poi.get("final_score", poi.get("score", 0.0) or 0.0) or 0.0
+    return (-float(score), dist)
+
+
+def _seed_days(day_plans, remaining_pois, used_ids, daily_poi_cap, soft_day_hour_cap, trip_center):
+    """
+    先给每一天分配一个 seed（满足时长）：
+    - 候选按“分数优先 + 到 trip_center 距离”排序
+    - 每天最多先拿 1 个，避免同心切片导致近邻拆散
+    """
+    seed_candidates = [
+        p for p in remaining_pois
+        if (p.get("place_id") or p.get("poi_id")) not in used_ids
+    ]
+    seed_candidates.sort(key=lambda p: _seed_key(p, trip_center))
+
+    for plan in day_plans:
+        day_pois = (plan.get("must_visit") or []) + (plan.get("recommended") or [])
+        day_dur = sum(get_poi_duration(p) for p in day_pois)
+        if len(day_pois) >= daily_poi_cap:
+            continue
+        for poi in seed_candidates:
+            uid = poi.get("place_id") or poi.get("poi_id")
+            if uid in used_ids:
+                continue
+            city_dist = _poi_distance_to_point(poi, DUBLIN_CENTER[0], DUBLIN_CENTER[1])
+            if city_dist > MAX_CITY_RADIUS_KM:
+                continue
+            dur = get_poi_duration(poi)
+            if day_dur + dur > soft_day_hour_cap:
+                continue
+            plan["recommended"].append(poi)
+            if uid is not None:
+                used_ids.add(uid)
+            break
+
+
+def _poi_broad_type(poi):
+    """将 POI 归为 museum/nature/culture/shopping/other 大类。"""
+    fids = set(poi.get("filter_ids") or [])
+    if not fids:
+        return "other"
+    if any(fid in INTEREST_TO_FILTER_IDS.get("museum", []) for fid in fids):
+        return "museum"
+    if any(fid in INTEREST_TO_FILTER_IDS.get("nature", []) for fid in fids):
+        return "nature"
+    if any(fid in INTEREST_TO_FILTER_IDS.get("culture", []) for fid in fids):
+        return "culture"
+    if any(fid in INTEREST_TO_FILTER_IDS.get("shopping", []) for fid in fids):
+        return "shopping"
+    return "other"
+
+
+def _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, daily_poi_cap, soft_day_hour_cap):
     """
     固定 Day Anchor + 最近邻扩展：
     - 有 must-visit 的天：anchor = must-visit 中心
@@ -348,7 +418,10 @@ def _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, max_day_hours):
         if anchor is None:
             continue
 
-        day_dur = sum(get_poi_duration(p) for p in plan["must_visit"])
+        day_pois = (plan.get("must_visit") or []) + (plan.get("recommended") or [])
+        day_dur = sum(get_poi_duration(p) for p in day_pois)
+        if len(day_pois) >= daily_poi_cap:
+            continue
 
         candidates = [
             p for p in remaining_pois
@@ -370,56 +443,17 @@ def _nearest_neighbor_fill(day_plans, remaining_pois, used_ids, max_day_hours):
             if dist > MAX_DAY_RADIUS_KM:
                 break
 
+            if len((plan.get("must_visit") or []) + (plan.get("recommended") or [])) >= daily_poi_cap:
+                break
+
             dur = get_poi_duration(poi)
-            if day_dur + dur > max_day_hours:
+            if day_dur + dur > soft_day_hour_cap:
                 continue
 
             plan["recommended"].append(poi)
             if uid is not None:
                 used_ids.add(uid)
             day_dur += dur
-
-
-def _optimize_adjacent_day_swap(day_plans, max_day_hours):
-    """
-    轻量跨天优化（仅相邻天）：
-    - 只移动 recommended（不移动 must-visit）
-    - 若 POI 距离前一天中心更近，且前一天时长允许，则从 Day(i+1) 移到 Day(i)
-    """
-    if not day_plans or len(day_plans) < 2:
-        return
-
-    def _plan_center(plan):
-        all_pois = (plan.get("must_visit") or []) + (plan.get("recommended") or [])
-        return _center_of_pois(all_pois)
-
-    def _plan_duration(plan):
-        all_pois = (plan.get("must_visit") or []) + (plan.get("recommended") or [])
-        return sum(get_poi_duration(p) for p in all_pois)
-
-    for i in range(1, len(day_plans)):
-        prev_plan = day_plans[i - 1]
-        curr_plan = day_plans[i]
-        movable = list(curr_plan.get("recommended") or [])
-
-        for poi in movable:
-            prev_center = _plan_center(prev_plan)
-            curr_center = _plan_center(curr_plan)
-            if prev_center is None or curr_center is None:
-                continue
-
-            d_prev = _poi_distance_to_point(poi, prev_center[0], prev_center[1])
-            d_curr = _poi_distance_to_point(poi, curr_center[0], curr_center[1])
-            if d_prev >= d_curr:
-                continue
-
-            poi_dur = get_poi_duration(poi)
-            if _plan_duration(prev_plan) + poi_dur > max_day_hours:
-                continue
-
-            # move_to_Day(i)_if_time_allows
-            curr_plan["recommended"].remove(poi)
-            prev_plan["recommended"].append(poi)
 
 
 def allocate_pois_to_days_v4_popularity_first(pois, must_visit_identifiers, preference, trip_days):
@@ -450,14 +484,15 @@ def allocate_pois_to_days_v4_popularity_first(pois, must_visit_identifiers, pref
 
     pace = getattr(preference, "pace", None) or "balanced"
     daily_hours = MAX_DAY_HOURS.get(pace, 6.5)
-    buffer = FLEXIBLE_BUFFER.get(pace, 1.0)
-    max_day_hours = daily_hours + buffer
+    daily_poi_cap = PACE_TO_DAILY_POI_CAP.get(pace, 4)
+    # 时长仅作为软兜底，不再是主约束
+    soft_day_hour_cap = max(daily_hours, daily_poi_cap * 2.5)
 
     must_visit_hours = sum(get_poi_duration(p) for p in must_visit_pois)
     base_budget = daily_hours * trip_days
     if must_visit_hours > base_budget:
         adjusted_daily = min(8.0, must_visit_hours / trip_days)
-        max_day_hours = min(max_day_hours, adjusted_daily + buffer)
+        soft_day_hour_cap = max(soft_day_hour_cap, adjusted_daily)
         warnings.append(
             f"Must-visit POIs require {must_visit_hours:.1f}h, adjusted daily pace to {adjusted_daily:.1f}h"
         )
@@ -475,43 +510,67 @@ def allocate_pois_to_days_v4_popularity_first(pois, must_visit_identifiers, pref
         if uid:
             used_ids.add(uid)
 
-    # Step 2: 地理软约束填充
+    # Step 2: seed（每个 day 先拿 1 个）避免同心切片
+    trip_center = _center_of_pois(must_visit_pois) or _center_of_pois(remaining_pois) or DUBLIN_CENTER
+    _seed_days(day_plans, remaining_pois, used_ids, daily_poi_cap, soft_day_hour_cap, trip_center)
+
+    # Step 3: 动态 anchor 填充（must_visit -> recommended -> trip_center）
+    # 规则：分数第一，距离第二；同一天同大类超过 2 个后软降权
+    DIVERSITY_PENALTY = 0.25
+    SAME_TYPE_SOFT_CAP = 2
     for plan in day_plans:
-        day_dur = sum(get_poi_duration(p) for p in plan["must_visit"])
-        center = _center_of_pois(plan["must_visit"]) if plan["must_visit"] else None
+        day_dur = sum(get_poi_duration(p) for p in (plan.get("must_visit") or []) + (plan.get("recommended") or []))
+        center = _plan_anchor(plan, trip_center)
+        day_type_counts = {}
+        for p in (plan.get("must_visit") or []) + (plan.get("recommended") or []):
+            t = _poi_broad_type(p)
+            day_type_counts[t] = day_type_counts.get(t, 0) + 1
 
         candidates = [
             p for p in remaining_pois
             if (p.get("place_id") or p.get("poi_id")) not in used_ids
         ]
-        if center:
-            candidates = sorted(
-                candidates,
-                key=lambda p: (
-                    -(p["final_score"] * (DISTANCE_PENALTY if _poi_distance_to_point(p, center[0], center[1]) > MAX_DISTANCE_SOFT_KM else 1.0)),
-                    _poi_distance_to_point(p, center[0], center[1]),
-                ),
-            )
-        else:
-            candidates = sorted(candidates, key=lambda p: -p["final_score"])
+        def _candidate_rank_value(p):
+            score = (p["final_score"] or 0.0)
+            if day_type_counts.get(_poi_broad_type(p), 0) >= SAME_TYPE_SOFT_CAP:
+                score -= DIVERSITY_PENALTY
+
+            # Day 接近满额时，加重距离惩罚，避免最后一两个点“跳区”
+            usage_ratio = (day_dur / soft_day_hour_cap) if soft_day_hour_cap > 0 else 0.0
+            if usage_ratio >= 0.75:
+                dist = _poi_distance_to_point(p, center[0], center[1])
+                score -= min(0.2, dist / 20.0)  # 10km -> -0.5 capped to -0.2
+            return score
+
+        candidates = sorted(
+            candidates,
+            key=lambda p: (
+                -_candidate_rank_value(p),
+                _poi_distance_to_point(p, center[0], center[1]),
+            ),
+        )
 
         for p in candidates:
             uid = p.get("place_id") or p.get("poi_id")
             if uid in used_ids:
                 continue
+            if len((plan.get("must_visit") or []) + (plan.get("recommended") or [])) >= daily_poi_cap:
+                break
             # City Bias: 超出都柏林中心半径则跳过
             city_dist = _poi_distance_to_point(p, DUBLIN_CENTER[0], DUBLIN_CENTER[1])
             if city_dist > MAX_CITY_RADIUS_KM:
                 continue
+            # 防漂移：超出 day anchor 半径跳过
+            if _poi_distance_to_point(p, center[0], center[1]) > MAX_DAY_RADIUS_KM:
+                continue
             poi_dur = get_poi_duration(p)
-            if day_dur + poi_dur > max_day_hours:
+            if day_dur + poi_dur > soft_day_hour_cap:
                 continue
             plan["recommended"].append(p)
             used_ids.add(uid)
+            bt = _poi_broad_type(p)
+            day_type_counts[bt] = day_type_counts.get(bt, 0) + 1
             day_dur += poi_dur
-
-    # Step 3: 轻量跨天优化（相邻天 swap）
-    _optimize_adjacent_day_swap(day_plans, max_day_hours)
 
     result_plans = []
     for plan in day_plans:
