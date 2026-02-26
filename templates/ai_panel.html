@@ -189,6 +189,7 @@
   let chatHistory = [];
   let welcomeShown = false;
   let itineraryDayPlansState = [];
+  let activeTripId = null;
   const poiOpenTimeCache = new Map();
 
   const AI_WELCOME = `Hi!
@@ -518,7 +519,90 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     setActiveDay(layoutEl.dataset.activeDay || 1);
   }
 
+  function bindEditChoiceButtons(wrap) {
+    if (!wrap) return;
+    wrap.querySelectorAll('.ai-edit-choice-btn').forEach(btn => {
+      btn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!(Number.isFinite(activeTripId) && activeTripId > 0)) return;
+        const choice = this.dataset.choice;
+        let parsed = null;
+        try {
+          parsed = JSON.parse(this.dataset.parsed || '{}');
+        } catch (_) {
+          parsed = null;
+        }
+        if (!parsed || typeof parsed !== 'object') return;
+
+        if (choice === 'replace_nearby_same_type') {
+          parsed.intent = 'replace_poi';
+          parsed.needs_clarification = false;
+          parsed.clarification_question = null;
+          parsed.constraints = Object.assign({}, parsed.constraints || {}, {
+            nearby: true,
+            same_type: (parsed?.constraints?.same_type || null),
+          });
+        } else {
+          parsed.intent = 'remove_poi';
+          parsed.needs_clarification = false;
+          parsed.clarification_question = null;
+        }
+
+        const placeholderWrap = appendMessage('assistant', '', true);
+        try {
+          const applyRes = await fetch('/api/trips/' + encodeURIComponent(activeTripId) + '/itinerary/apply-edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parsed })
+          });
+          const applyData = await applyRes.json();
+          if (applyData && applyData.success && applyData.applied) {
+            itineraryDayPlansState = Array.isArray(applyData.day_plans) ? applyData.day_plans : [];
+            const appliedDay = Number(applyData?.applied_action?.day) || 1;
+            const removedName = applyData?.applied_action?.removed_poi || 'target POI';
+            const addedNames = Array.isArray(applyData?.applied_action?.added_pois)
+              ? applyData.applied_action.added_pois.filter(Boolean)
+              : [];
+            const addedText = addedNames.length ? (' Added: ' + addedNames.join(', ') + '.') : '';
+            const prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
+            const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
+            setBubbleHtmlContent(placeholderWrap, html);
+            bindItineraryDayEvents(placeholderWrap);
+            if (typeof window.setItineraryDayPlans === 'function') {
+              window.setItineraryDayPlans(itineraryDayPlansState, appliedDay);
+            }
+            chatHistory.push({ role: 'assistant', content: prefix });
+            return;
+          }
+          if (applyData && applyData.success && applyData.needs_clarification) {
+            const q = applyData.clarification_question || 'Could you clarify your request?';
+            if ((applyData.clarification_type || '') === 'remove_or_replace') {
+              const parsedEscaped = escapeHtml(JSON.stringify(applyData.parsed || parsed || {}));
+              const html =
+                '<div>' + escapeHtml(q) + '</div>' +
+                '<div class="ai-edit-choice-row">' +
+                  '<button type="button" class="ai-edit-choice-btn" data-choice="remove_only" data-parsed="' + parsedEscaped + '">Remove only</button>' +
+                  '<button type="button" class="ai-edit-choice-btn" data-choice="replace_nearby_same_type" data-parsed="' + parsedEscaped + '">Remove & replace nearby</button>' +
+                '</div>';
+              setBubbleHtmlContent(placeholderWrap, html);
+              bindEditChoiceButtons(placeholderWrap);
+            } else {
+              setBubbleContent(placeholderWrap, q);
+            }
+            chatHistory.push({ role: 'assistant', content: q });
+            return;
+          }
+          setBubbleContent(placeholderWrap, (applyData && applyData.message) || 'Failed to apply your edit.');
+        } catch (_) {
+          setBubbleContent(placeholderWrap, 'Network error. Please try again.');
+        }
+      });
+    });
+  }
+
   async function fetchAndRenderItinerary(tripId) {
+    activeTripId = Number(tripId) || null;
     const placeholderWrap = appendMessage('assistant', '', true);
     try {
       const res = await fetch('/api/trips/' + encodeURIComponent(tripId) + '/candidates');
@@ -605,6 +689,93 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const placeholderWrap = appendMessage('assistant', '', true);
 
     try {
+      // 若已有当前 trip，优先走“解析->执行”编辑链路（会创建新版本并刷新地图/卡片）
+      if (Number.isFinite(activeTripId) && activeTripId > 0) {
+        let parseData = null;
+        try {
+          const parseRes = await fetch('/api/trips/' + encodeURIComponent(activeTripId) + '/itinerary/parse-edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_text: raw })
+          });
+          parseData = await parseRes.json();
+        } catch (_) {}
+
+        if (parseData && parseData.success && parseData.parsed) {
+          const parsed = parseData.parsed || {};
+          if (parsed.needs_clarification) {
+            const q = parsed.clarification_question || 'Could you clarify your request?';
+            if ((parsed.clarification_type || '') === 'remove_or_replace') {
+              const parsedEscaped = escapeHtml(JSON.stringify(parsed));
+              const html =
+                '<div>' + escapeHtml(q) + '</div>' +
+                '<div class="ai-edit-choice-row">' +
+                  '<button type="button" class="ai-edit-choice-btn" data-choice="remove_only" data-parsed="' + parsedEscaped + '">Remove only</button>' +
+                  '<button type="button" class="ai-edit-choice-btn" data-choice="replace_nearby_same_type" data-parsed="' + parsedEscaped + '">Remove & replace nearby</button>' +
+                '</div>';
+              setBubbleHtmlContent(placeholderWrap, html);
+              bindEditChoiceButtons(placeholderWrap);
+            } else {
+              setBubbleContent(placeholderWrap, q);
+            }
+            chatHistory.push({ role: 'assistant', content: q });
+            return;
+          }
+
+          // 自动执行：remove / replace
+          if (parsed.intent === 'remove_poi' || parsed.intent === 'replace_poi') {
+            const applyRes = await fetch('/api/trips/' + encodeURIComponent(activeTripId) + '/itinerary/apply-edit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ parsed })
+            });
+            const applyData = await applyRes.json();
+
+            if (applyData && applyData.success && applyData.applied) {
+              itineraryDayPlansState = Array.isArray(applyData.day_plans) ? applyData.day_plans : [];
+              const appliedDay = Number(applyData?.applied_action?.day) || 1;
+              const removedName = applyData?.applied_action?.removed_poi || 'target POI';
+              const addedNames = Array.isArray(applyData?.applied_action?.added_pois)
+                ? applyData.applied_action.added_pois.filter(Boolean)
+                : [];
+              const addedText = addedNames.length ? (' Added: ' + addedNames.join(', ') + '.') : '';
+              const prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
+              const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
+              setBubbleHtmlContent(placeholderWrap, html);
+              bindItineraryDayEvents(placeholderWrap);
+              if (typeof window.setItineraryDayPlans === 'function') {
+                window.setItineraryDayPlans(itineraryDayPlansState, appliedDay);
+              }
+              chatHistory.push({ role: 'assistant', content: prefix });
+              return;
+            }
+            if (applyData && applyData.success && applyData.needs_clarification) {
+              const q = applyData.clarification_question || 'Could you clarify your request?';
+              if ((applyData.clarification_type || '') === 'remove_or_replace') {
+                const parsedEscaped = escapeHtml(JSON.stringify(applyData.parsed || parsed || {}));
+                const html =
+                  '<div>' + escapeHtml(q) + '</div>' +
+                  '<div class="ai-edit-choice-row">' +
+                    '<button type="button" class="ai-edit-choice-btn" data-choice="remove_only" data-parsed="' + parsedEscaped + '">Remove only</button>' +
+                    '<button type="button" class="ai-edit-choice-btn" data-choice="replace_nearby_same_type" data-parsed="' + parsedEscaped + '">Remove & replace nearby</button>' +
+                  '</div>';
+                setBubbleHtmlContent(placeholderWrap, html);
+                bindEditChoiceButtons(placeholderWrap);
+              } else {
+                setBubbleContent(placeholderWrap, q);
+              }
+              chatHistory.push({ role: 'assistant', content: q });
+              return;
+            }
+            if (applyData && applyData.message) {
+              setBubbleContent(placeholderWrap, applyData.message);
+              return;
+            }
+          }
+        }
+      }
+
+      // 非“可执行编辑请求”时，回退到原始聊天回复
       const res = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

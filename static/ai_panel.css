@@ -83,6 +83,28 @@ body.show-ai-panel #ai-panel {
   white-space: pre-wrap;
 }
 
+.ai-edit-choice-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-edit-choice-btn {
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-edit-choice-btn:hover {
+  background: #dbeafe;
+}
+
 /* Itinerary render in AI chat */
 .ai-itinerary-empty {
   color: #6b7280;
