@@ -13,6 +13,7 @@
 
 {% macro my_trip_panel_js() %}
 let myTripsData = [];
+let activeMyTripCardId = null;
 
 async function _checkTripPanelLoggedIn() {
   if (typeof checkUserLoggedIn === 'function') {
@@ -29,7 +30,15 @@ async function _checkTripPanelLoggedIn() {
 
 function _safeSummaryText(summary) {
   if (!summary || typeof summary !== 'string') return '';
-  return summary.length > 220 ? (summary.slice(0, 220) + '...') : summary;
+  const lines = summary
+    .split('\n')
+    .map(line => String(line || '').trim())
+    .filter(line => line);
+
+  const mustVisitLine = lines.find(line => /^must-visit\s*:/i.test(line)) || '';
+  const kept = [mustVisitLine].filter(Boolean).join('\n');
+  if (!kept) return '';
+  return kept.length > 220 ? (kept.slice(0, 220) + '...') : kept;
 }
 
 function _formatTripTime(isoText) {
@@ -41,6 +50,40 @@ function _formatTripTime(isoText) {
   } catch (_) {
     return '';
   }
+}
+
+function _formatDateRangeShort(startIso, endIso) {
+  const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtMonthDay(dateObj) {
+    return MONTHS_EN[dateObj.getMonth()] + ' ' + dateObj.getDate();
+  }
+  function fmtMonthDayYear(dateObj) {
+    return MONTHS_EN[dateObj.getMonth()] + ' ' + dateObj.getDate() + ', ' + dateObj.getFullYear();
+  }
+  function parseIso(isoText) {
+    if (!isoText) return null;
+    const d = new Date(isoText);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const start = parseIso(startIso);
+  const end = parseIso(endIso);
+  if (!start && !end) return 'Flexible dates';
+  if (start && !end) {
+    return fmtMonthDayYear(start);
+  }
+  if (!start && end) {
+    return fmtMonthDayYear(end);
+  }
+
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === end.getMonth();
+  if (sameMonth) {
+    return MONTHS_EN[start.getMonth()] + ' ' + start.getDate() + '-' + end.getDate() + ', ' + start.getFullYear();
+  }
+  if (sameYear) {
+    return fmtMonthDay(start) + '-' + fmtMonthDay(end) + ', ' + start.getFullYear();
+  }
+  return fmtMonthDayYear(start) + '-' + fmtMonthDayYear(end);
 }
 
 async function loadMyTrips() {
@@ -76,9 +119,13 @@ async function loadMyTrips() {
 function renderMyTrips(container, trips) {
   container.innerHTML = '';
   trips.forEach((trip) => {
+    const tripId = Number(trip.trip_id || 0);
     const card = document.createElement('div');
     card.className = 'my-trip-card';
     card.dataset.tripId = String(trip.trip_id || '');
+    if (activeMyTripCardId !== null && tripId === activeMyTripCardId) {
+      card.classList.add('my-trip-card-active');
+    }
 
     const latest = trip.latest_itinerary || {};
     const createdAtText = _formatTripTime(trip.created_at);
@@ -86,25 +133,35 @@ function renderMyTrips(container, trips) {
     const summary = _safeSummaryText(latest.summary || '');
     const versionText = latest.version ? ('v' + String(latest.version)) : '-';
     const dayCount = Number(latest.day_count || 0);
-    const poiCount = Number(latest.poi_count || 0);
+    const placeCount = Number(latest.poi_count || 0);
+    const dateRangeText = _formatDateRangeShort(trip.visit_date, trip.visit_date_end);
 
     card.innerHTML = `
       <div class="my-trip-card-header">
-        <div class="my-trip-title">Trip #${trip.trip_id}</div>
+        <div class="my-trip-title">Trip ${trip.trip_id}</div>
         <div class="my-trip-version">${versionText}</div>
       </div>
-      <div class="my-trip-meta">Created: ${createdAtText || '-'}</div>
-      <div class="my-trip-meta">Latest itinerary: ${latestAtText || '-'}</div>
+      <div class="my-trip-subtitle">${dateRangeText} • ${placeCount} place${placeCount === 1 ? '' : 's'}</div>
       <div class="my-trip-badges">
         <span class="my-trip-badge">${dayCount} day${dayCount === 1 ? '' : 's'}</span>
-        <span class="my-trip-badge">${poiCount} POIs</span>
         <span class="my-trip-badge">${latest.is_active ? 'Active' : 'Archived'}</span>
       </div>
-      <div class="my-trip-summary">${summary || 'No summary yet.'}</div>
+      <div class="my-trip-summary">${summary || 'Must-visit: (none)'}</div>
+      <div class="my-trip-times">
+        <div class="my-trip-meta">Created: ${createdAtText || '-'}</div>
+        <div class="my-trip-meta">Latest itinerary: ${latestAtText || '-'}</div>
+      </div>
     `;
-    card.addEventListener('click', () => {
-      const tripId = Number(trip.trip_id || 0);
+    card.addEventListener('click', (evt) => {
       if (!(Number.isFinite(tripId) && tripId > 0)) return;
+      activeMyTripCardId = tripId;
+      container.querySelectorAll('.my-trip-card').forEach(c => c.classList.remove('my-trip-card-active', 'my-trip-ripple-active'));
+      card.classList.add('my-trip-card-active');
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty('--trip-ripple-x', (evt.clientX - rect.left) + 'px');
+      card.style.setProperty('--trip-ripple-y', (evt.clientY - rect.top) + 'px');
+      card.classList.add('my-trip-ripple-active');
+      setTimeout(() => card.classList.remove('my-trip-ripple-active'), 650);
 
       document.body.classList.add('show-ai-panel');
       document.body.classList.remove('show-my-trips');

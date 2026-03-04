@@ -34,9 +34,11 @@ body.show-my-trips #my-trip-panel {
 #my-trips-container {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 16px;
   overflow-y: auto;
+  align-content: flex-start;
 }
 
 .my-trips-loading,
@@ -45,6 +47,7 @@ body.show-my-trips #my-trip-panel {
   padding: 36px 16px;
   color: #666;
   font-size: 14px;
+  width: 100%;
 }
 
 .my-trip-card {
@@ -53,6 +56,54 @@ body.show-my-trips #my-trip-panel {
   background: #fff;
   padding: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  width: calc((100% - 16px) / 2);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+.my-trip-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.my-trip-card.my-trip-card-active {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+  background: #f8fbff;
+}
+
+.my-trip-card.my-trip-ripple-active::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: var(--trip-ripple-x, 50%);
+  top: var(--trip-ripple-y, 50%);
+  transform: scale(0);
+  border-radius: 999px;
+  background: #60a5fa;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.32;
+  animation: my-trip-rippling 650ms ease-out forwards;
+}
+
+@keyframes my-trip-rippling {
+  0% {
+    opacity: 0.35;
+    transform: scale(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
 }
 
 .my-trip-card-header {
@@ -68,6 +119,12 @@ body.show-my-trips #my-trip-panel {
   color: #111827;
 }
 
+.my-trip-subtitle {
+  font-size: 13px;
+  color: #4b5563;
+  margin-bottom: 8px;
+}
+
 .my-trip-version {
   font-size: 12px;
   color: #4b5563;
@@ -79,7 +136,7 @@ body.show-my-trips #my-trip-panel {
 .my-trip-meta {
   font-size: 12px;
   color: #6b7280;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .my-trip-badges {
@@ -102,4 +159,11 @@ body.show-my-trips #my-trip-panel {
   font-size: 13px;
   color: #374151;
   white-space: pre-wrap;
+  flex: 1 1 auto;
+}
+
+.my-trip-times {
+  margin-top: 10px;
+  align-self: flex-end;
+  text-align: right;
 }
