@@ -550,6 +550,7 @@ def get_user_trips():
                 "saved_at": trip.saved_at.isoformat() if trip.saved_at else None,
                 "visit_date": trip.preference.visit_date.isoformat() if (trip.preference and trip.preference.visit_date) else None,
                 "visit_date_end": trip.preference.visit_date_end.isoformat() if (trip.preference and trip.preference.visit_date_end) else None,
+                "interests": (trip.preference.interests if (trip.preference and isinstance(trip.preference.interests, dict)) else {}),
                 "latest_itinerary": latest_payload,
             })
 

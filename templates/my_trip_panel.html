@@ -86,6 +86,23 @@ function _formatDateRangeShort(startIso, endIso) {
   return fmtMonthDayYear(start) + '-' + fmtMonthDayYear(end);
 }
 
+function _topInterestLabels(interestsObj, maxCount) {
+  if (!interestsObj || typeof interestsObj !== 'object') return [];
+  const labelMap = {
+    museum: 'museum',
+    nature: 'nature',
+    culture: 'culture',
+    shopping: 'shopping',
+  };
+  return Object.keys(interestsObj)
+    .map((k) => ({ key: k, val: Number(interestsObj[k] || 0) }))
+    .filter((x) => Number.isFinite(x.val) && x.val > 0)
+    .sort((a, b) => b.val - a.val)
+    .slice(0, Math.max(0, Number(maxCount || 3)))
+    .map((x) => labelMap[x.key] || String(x.key || '').toLowerCase())
+    .filter(Boolean);
+}
+
 async function loadMyTrips() {
   const container = document.getElementById('my-trips-container');
   if (!container) return;
@@ -135,6 +152,8 @@ function renderMyTrips(container, trips) {
     const dayCount = Number(latest.day_count || 0);
     const placeCount = Number(latest.poi_count || 0);
     const dateRangeText = _formatDateRangeShort(trip.visit_date, trip.visit_date_end);
+    const interestLabels = _topInterestLabels(trip.interests || {}, 3);
+    const interestBadgesHtml = interestLabels.map((label) => '<span class="my-trip-badge">' + label + '</span>').join('');
 
     card.innerHTML = `
       <div class="my-trip-card-header">
@@ -144,7 +163,7 @@ function renderMyTrips(container, trips) {
       <div class="my-trip-subtitle">${dateRangeText} • ${placeCount} place${placeCount === 1 ? '' : 's'}</div>
       <div class="my-trip-badges">
         <span class="my-trip-badge">${dayCount} day${dayCount === 1 ? '' : 's'}</span>
-        <span class="my-trip-badge">${latest.is_active ? 'Active' : 'Archived'}</span>
+        ${interestBadgesHtml}
       </div>
       <div class="my-trip-summary">${summary || 'Must-visit: (none)'}</div>
       <div class="my-trip-times">
