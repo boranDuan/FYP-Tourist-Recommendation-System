@@ -5,7 +5,13 @@
 {% macro ai_panel_html() %}
 <!-- AI 对话面板 -->
 <div id="ai-panel">
-  <h2>AI Recommend</h2>
+  <div class="ai-panel-header">
+    <h2>AI Recommend</h2>
+    <div class="ai-new-trip-card">
+      <div class="ai-new-trip-text">Want to create a new itinerary?</div>
+      <button type="button" id="ai-start-new-trip-btn" class="ai-start-new-trip-btn">Start New Trip</button>
+    </div>
+  </div>
   <div id="ai-chat-messages" class="ai-chat-messages"></div>
   <div class="ai-chat-input-wrap">
     <textarea id="ai-chat-input" class="ai-chat-input" placeholder="Ask for travel recommendations..." rows="2"></textarea>
@@ -183,6 +189,7 @@
   const messagesEl = document.getElementById('ai-chat-messages');
   const inputEl = document.getElementById('ai-chat-input');
   const sendBtn = document.getElementById('ai-chat-send');
+  const startNewTripBtn = document.getElementById('ai-start-new-trip-btn');
 
   if (!messagesEl || !inputEl || !sendBtn) return;
 
@@ -626,6 +633,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     }
   }
 
+  window.openTripInAI = function(tripId) {
+    const id = Number(tripId);
+    if (!(Number.isFinite(id) && id > 0)) return;
+    activeTripId = id;
+    fetchAndRenderItinerary(id);
+  };
+
   function showWelcomeMessage() {
     if (welcomeShown) return;
     welcomeShown = true;
@@ -810,6 +824,32 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   if (document.body.classList.contains('show-ai-panel')) {
     showWelcomeMessage();
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  if (startNewTripBtn) {
+    startNewTripBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // 重置为“新会话”界面：清空历史消息与历史上下文
+      chatHistory = [];
+      welcomeShown = false;
+      messagesEl.innerHTML = '';
+      messagesEl.scrollTop = 0;
+
+      activeTripId = null;
+      itineraryDayPlansState = [];
+      poiOpenTimeCache.clear();
+      window.__pendingItineraryDayPlans = [];
+      window.__pendingItineraryCurrentDay = 1;
+      if (typeof window.setItineraryDayPlans === 'function') {
+        window.setItineraryDayPlans([], 1);
+      }
+
+      appendMessage('assistant', 'Starting a new trip. Please fill out the questionnaire to create a fresh itinerary.');
+      chatHistory.push({ role: 'assistant', content: 'Starting a new trip.' });
+      openQuestionnaire();
+    });
   }
 
   // 问卷：仅 Family 时显示 1b（儿童/老人）

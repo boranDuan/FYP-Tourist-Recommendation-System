@@ -33,6 +33,48 @@ body.show-ai-panel #ai-panel {
   flex-shrink: 0;
 }
 
+.ai-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.ai-new-trip-card {
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 220px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-new-trip-text {
+  font-size: 12px;
+  color: #1e3a8a;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ai-start-new-trip-btn {
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.ai-start-new-trip-btn:hover {
+  background: #1d4ed8;
+}
+
 /* 消息列表 */
 .ai-chat-messages {
   flex: 1;

@@ -1,0 +1,105 @@
+#my-trip-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100vh;
+  background: #ffffff;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  padding: 20px 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.6s ease, opacity 0.3s ease;
+  z-index: 900;
+  overflow-y: auto;
+}
+
+body.show-my-trips #my-trip-panel {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#my-trip-panel h2 {
+  margin: 0 0 16px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+#my-trips-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.my-trips-loading,
+.my-trips-empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: #666;
+  font-size: 14px;
+}
+
+.my-trip-card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.my-trip-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.my-trip-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.my-trip-version {
+  font-size: 12px;
+  color: #4b5563;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.my-trip-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.my-trip-badges {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.my-trip-badge {
+  font-size: 11px;
+  color: #1f2937;
+  background: #eef2ff;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.my-trip-summary {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #374151;
+  white-space: pre-wrap;
+}

@@ -1,0 +1,149 @@
+{% macro my_trip_panel_styles() %}
+<link rel="stylesheet" href="{{ url_for('static', filename='my_trip_panel.css') }}">
+{% endmacro %}
+
+{% macro my_trip_panel_html() %}
+<div id="my-trip-panel">
+  <h2>My Trips</h2>
+  <div id="my-trips-container">
+    <div class="my-trips-loading">Loading trips...</div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro my_trip_panel_js() %}
+let myTripsData = [];
+
+async function _checkTripPanelLoggedIn() {
+  if (typeof checkUserLoggedIn === 'function') {
+    return checkUserLoggedIn();
+  }
+  try {
+    const response = await fetch('/api/user');
+    const data = await response.json();
+    return data.success && data.user !== null;
+  } catch (_) {
+    return false;
+  }
+}
+
+function _safeSummaryText(summary) {
+  if (!summary || typeof summary !== 'string') return '';
+  return summary.length > 220 ? (summary.slice(0, 220) + '...') : summary;
+}
+
+function _formatTripTime(isoText) {
+  if (!isoText) return '';
+  try {
+    const d = new Date(isoText);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString();
+  } catch (_) {
+    return '';
+  }
+}
+
+async function loadMyTrips() {
+  const container = document.getElementById('my-trips-container');
+  if (!container) return;
+
+  container.innerHTML = '<div class="my-trips-loading">Loading trips...</div>';
+  const isLoggedIn = await _checkTripPanelLoggedIn();
+  if (!isLoggedIn) {
+    container.innerHTML = '<div class="my-trips-empty">Please login to view your trip history</div>';
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/trips');
+    const data = await response.json();
+    if (!data.success) {
+      container.innerHTML = '<div class="my-trips-empty">' + (data.message || 'Failed to load trips') + '</div>';
+      return;
+    }
+    myTripsData = Array.isArray(data.trips) ? data.trips : [];
+    if (myTripsData.length === 0) {
+      container.innerHTML = '<div class="my-trips-empty">No trips yet. Create your first itinerary from AI Recommend.</div>';
+      return;
+    }
+    renderMyTrips(container, myTripsData);
+  } catch (error) {
+    console.error('Failed to load trips:', error);
+    container.innerHTML = '<div class="my-trips-empty">Failed to load trips</div>';
+  }
+}
+
+function renderMyTrips(container, trips) {
+  container.innerHTML = '';
+  trips.forEach((trip) => {
+    const card = document.createElement('div');
+    card.className = 'my-trip-card';
+    card.dataset.tripId = String(trip.trip_id || '');
+
+    const latest = trip.latest_itinerary || {};
+    const createdAtText = _formatTripTime(trip.created_at);
+    const latestAtText = _formatTripTime(latest.generated_at);
+    const summary = _safeSummaryText(latest.summary || '');
+    const versionText = latest.version ? ('v' + String(latest.version)) : '-';
+    const dayCount = Number(latest.day_count || 0);
+    const poiCount = Number(latest.poi_count || 0);
+
+    card.innerHTML = `
+      <div class="my-trip-card-header">
+        <div class="my-trip-title">Trip #${trip.trip_id}</div>
+        <div class="my-trip-version">${versionText}</div>
+      </div>
+      <div class="my-trip-meta">Created: ${createdAtText || '-'}</div>
+      <div class="my-trip-meta">Latest itinerary: ${latestAtText || '-'}</div>
+      <div class="my-trip-badges">
+        <span class="my-trip-badge">${dayCount} day${dayCount === 1 ? '' : 's'}</span>
+        <span class="my-trip-badge">${poiCount} POIs</span>
+        <span class="my-trip-badge">${latest.is_active ? 'Active' : 'Archived'}</span>
+      </div>
+      <div class="my-trip-summary">${summary || 'No summary yet.'}</div>
+    `;
+    card.addEventListener('click', () => {
+      const tripId = Number(trip.trip_id || 0);
+      if (!(Number.isFinite(tripId) && tripId > 0)) return;
+
+      document.body.classList.add('show-ai-panel');
+      document.body.classList.remove('show-my-trips');
+      document.body.classList.remove('collapsed');
+      document.body.classList.remove('show-favorites');
+      const collapseBtn = document.getElementById('collapseBtn');
+      if (collapseBtn) collapseBtn.textContent = '←';
+
+      if (typeof window.openTripInAI === 'function') {
+        window.openTripInAI(tripId);
+      }
+    });
+    container.appendChild(card);
+  });
+}
+
+(function() {
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        if (document.body.classList.contains('show-my-trips')) {
+          loadMyTrips();
+        }
+      }
+    });
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      if (document.body.classList.contains('show-my-trips')) {
+        loadMyTrips();
+      }
+    });
+  } else {
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    if (document.body.classList.contains('show-my-trips')) {
+      loadMyTrips();
+    }
+  }
+})();
+{% endmacro %}

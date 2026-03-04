@@ -563,6 +563,7 @@
                 } else {
                     document.body.classList.add('collapsed');
                     document.body.classList.remove('show-favorites');
+                    document.body.classList.remove('show-my-trips');
                     document.body.classList.remove('show-ai-panel');
                 }
                 
@@ -586,6 +587,7 @@
                 } else {
                     document.body.classList.add('show-favorites');
                     document.body.classList.remove('collapsed');
+                    document.body.classList.remove('show-my-trips');
                     document.body.classList.remove('show-ai-panel');
                     // 加载收藏列表
                     if (typeof loadFavorites === 'function') {
@@ -596,6 +598,32 @@
                 const collapseBtn = document.getElementById('collapseBtn');
                 if (collapseBtn) {
                     collapseBtn.textContent = document.body.classList.contains('show-favorites') ? '←' : '→';
+                }
+            });
+        }
+
+        // 处理左侧工作栏 My Trip 点击：显示行程历史面板
+        const myTripItem = document.querySelector('.sidebar .item[data-label="My Trip"]');
+        if (myTripItem) {
+            myTripItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isCurrentlyShowingTrips = document.body.classList.contains('show-my-trips');
+
+                if (isCurrentlyShowingTrips) {
+                    document.body.classList.remove('show-my-trips');
+                } else {
+                    document.body.classList.add('show-my-trips');
+                    document.body.classList.remove('collapsed');
+                    document.body.classList.remove('show-favorites');
+                    document.body.classList.remove('show-ai-panel');
+                    if (typeof loadMyTrips === 'function') {
+                        loadMyTrips();
+                    }
+                }
+
+                const collapseBtn = document.getElementById('collapseBtn');
+                if (collapseBtn) {
+                    collapseBtn.textContent = document.body.classList.contains('show-my-trips') ? '←' : '→';
                 }
             });
         }
@@ -613,6 +641,7 @@
                     document.body.classList.add('show-ai-panel');
                     document.body.classList.remove('collapsed');
                     document.body.classList.remove('show-favorites');
+                    document.body.classList.remove('show-my-trips');
                 }
                 
                 const collapseBtn = document.getElementById('collapseBtn');

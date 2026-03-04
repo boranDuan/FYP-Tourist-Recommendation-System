@@ -491,6 +491,71 @@ def trip_create():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/api/trips", methods=["GET"])
+def get_user_trips():
+    """返回当前登录用户的 Trip 历史列表（包含最新 itinerary 摘要）。"""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "message": "Please login first", "trips": []}), 401
+
+    try:
+        trips = (
+            Trip.query
+            .filter_by(user_id=user_id)
+            .order_by(Trip.created_at.desc())
+            .all()
+        )
+
+        out = []
+        for trip in trips:
+            active_itinerary = (
+                Itinerary.query
+                .filter_by(trip_id=trip.trip_id, is_active=True)
+                .order_by(Itinerary.version.desc())
+                .first()
+            )
+            latest_itinerary = active_itinerary or (
+                Itinerary.query
+                .filter_by(trip_id=trip.trip_id)
+                .order_by(Itinerary.version.desc())
+                .first()
+            )
+
+            latest_payload = None
+            if latest_itinerary:
+                content = latest_itinerary.content_json or {}
+                day_plans = content.get("day_plans") if isinstance(content, dict) else []
+                if not isinstance(day_plans, list):
+                    day_plans = []
+                summary = (content.get("summary") if isinstance(content, dict) else None) or None
+                if not summary and day_plans:
+                    trip_days = _get_trip_days(trip.preference) if trip.preference else len(day_plans)
+                    summary = format_itinerary_summary(day_plans, trip_days)
+                poi_count = sum(len((dp or {}).get("pois") or []) for dp in day_plans)
+                latest_payload = {
+                    "itinerary_id": latest_itinerary.itinerary_id,
+                    "version": latest_itinerary.version,
+                    "is_active": bool(latest_itinerary.is_active),
+                    "generated_at": latest_itinerary.generated_at.isoformat() if latest_itinerary.generated_at else None,
+                    "day_count": len(day_plans),
+                    "poi_count": poi_count,
+                    "summary": summary,
+                }
+
+            out.append({
+                "trip_id": trip.trip_id,
+                "status": trip.status,
+                "is_saved": bool(trip.is_saved),
+                "created_at": trip.created_at.isoformat() if trip.created_at else None,
+                "saved_at": trip.saved_at.isoformat() if trip.saved_at else None,
+                "latest_itinerary": latest_payload,
+            })
+
+        return jsonify({"success": True, "trips": out}), 200
+    except Exception as e:
+        return jsonify({"success": False, "message": "Failed to load trips: " + str(e), "trips": []}), 500
+
+
 # ========== Preference Matching：按兴趣为 Trip 返回候选 POI ==========
 
 def _get_trip_days(preference):
