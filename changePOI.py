@@ -18,6 +18,10 @@ from removePOI import (
     execute_remove_poi as _execute_remove_poi,
     resolve_choice_from_text as _remove_resolve_choice_from_text,
 )
+from movePOI import (
+    enforce_move_parse_rules as _move_enforce_parse_rules,
+    execute_move_poi as _execute_move_poi,
+)
 
 
 _CTX = {}
@@ -218,14 +222,9 @@ def _enforce_parse_clarification_rules(parsed, user_text):
             parsed["needs_clarification"] = True
             parsed["clarification_question"] = "Which exact POI do you want to edit?"
 
-    if intent == "move_poi":
-        target_day = parsed.get("target_day")
-        if target_day is None and not parsed.get("needs_clarification"):
-            parsed["needs_clarification"] = True
-            parsed["clarification_question"] = "Which target day do you want to move it to?"
-
     parsed = _add_enforce_parse_rules(parsed)
     parsed = _remove_enforce_parse_rules(parsed, user_text)
+    parsed = _move_enforce_parse_rules(parsed)
     return parsed
 
 
@@ -408,17 +407,6 @@ def _pick_existing_poi_for_replace(plan):
         if not (p or {}).get("is_must_visit"):
             return i, p
     return len(pois) - 1, pois[-1]
-
-
-def _pop_poi_from_plan(plan, poi_name):
-    pois = list(plan.get("pois") or [])
-    idx = _pick_poi_index_by_name(pois, poi_name)
-    if idx < 0:
-        return None
-    popped = pois.pop(idx)
-    plan["pois"] = pois
-    _recompute_plan_meta(plan)
-    return popped
 
 
 def _append_poi_to_plan_with_constraints(target_plan, poi, pref):
@@ -908,7 +896,7 @@ def register_change_poi_routes(app):
                 move_to_day = None
 
         source_plan = None
-        if intent in ("replace_poi", "move_poi"):
+        if intent == "replace_poi":
             if day is not None:
                 source_plan = _find_day_plan(day_plans, day)
                 if not source_plan:
@@ -1016,28 +1004,35 @@ def register_change_poi_routes(app):
             added = list(add_result.get("added") or [])
 
         elif intent == "move_poi":
-            if move_to_day is None:
-                return _resp_clarify(trip_id, parsed, "Which target day do you want to move it to?")
-            target_plan = _find_day_plan(day_plans, move_to_day)
-            if not target_plan:
-                return _resp_error(f"Target day {move_to_day} not found", status=400)
-            if int(target_plan.get("day", 0)) == int(source_plan.get("day", -1)):
-                return _resp_error("Source day and target day are the same", status=400)
-
-            moved = _pop_poi_from_plan(source_plan, poi_name)
-            if not moved:
-                return _resp_error(f"POI not found in source day: {poi_name}", status=404)
-            ok, reason = _append_poi_to_plan_with_constraints(target_plan, moved, trip.preference)
-            if not ok:
-                source_pois = list(source_plan.get("pois") or [])
-                source_pois.append(moved)
-                source_plan["pois"] = source_pois
-                _recompute_plan_meta(source_plan)
-                return _resp_error(f"Failed to move POI: {reason}", status=400)
-
-            removed = moved
-            applied_day = source_plan.get("day")
-            added = [moved]
+            move_result = _execute_move_poi(
+                parsed=parsed,
+                poi_name=poi_name,
+                day=day,
+                target_day=move_to_day,
+                day_plans=day_plans,
+                find_day_plan=_find_day_plan,
+                pick_poi_match=_pick_poi_match,
+                recompute_plan_meta=_recompute_plan_meta,
+            )
+            if move_result.get("kind") == "error":
+                return _resp_error(
+                    move_result.get("message") or "Failed to move POI",
+                    status=int(move_result.get("status") or 400),
+                    parsed=parsed,
+                )
+            if move_result.get("kind") == "clarify":
+                parsed = move_result.get("parsed") or parsed
+                return _resp_clarify(
+                    trip_id,
+                    parsed,
+                    move_result.get("question"),
+                    clarification_type=move_result.get("clarification_type"),
+                    clarification_options=move_result.get("clarification_options"),
+                )
+            removed = move_result.get("removed")
+            applied_day = move_result.get("applied_day")
+            added = list(move_result.get("added") or [])
+            move_to_day = move_result.get("target_day")
         if intent != "add_poi" and not removed:
             return _resp_error(f"POI not found in target day: {poi_name}", status=404)
 

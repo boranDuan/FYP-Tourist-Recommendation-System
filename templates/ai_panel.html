@@ -200,6 +200,7 @@
   let guidedEditAction = null;
   let guidedAddContext = null;
   let guidedRemoveContext = null;
+  let guidedMoveContext = null;
   const poiOpenTimeCache = new Map();
   const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
 
@@ -463,6 +464,51 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       names.map(function(name) {
         return '<button type="button" class="ai-guided-action-btn" data-guided-remove-poi="' + escapeHtml(String(name)) + '">' +
           escapeHtml(String(name)) +
+          '</button>';
+      }).join('') +
+      '</div>'
+    );
+  }
+
+  function _renderGuidedMoveSourceDayChoices(dayOptions) {
+    const list = Array.isArray(dayOptions) ? dayOptions.filter(Boolean) : [];
+    if (!list.length) return '<div>Could not detect available days for move action.</div>';
+    return (
+      '<div>Which day do you want to move a POI from?</div>' +
+      '<div class="ai-edit-choice-row">' +
+      list.map(function(dayNum) {
+        return '<button type="button" class="ai-guided-action-btn" data-guided-move-source-day="' + escapeHtml(String(dayNum)) + '">Day ' +
+          escapeHtml(String(dayNum)) +
+          '</button>';
+      }).join('') +
+      '</div>'
+    );
+  }
+
+  function _renderGuidedMovePoiChoices(dayNum, poiNames) {
+    const names = Array.isArray(poiNames) ? poiNames.filter(Boolean) : [];
+    if (!names.length) return '<div>No POIs found in Day ' + escapeHtml(String(dayNum)) + '.</div>';
+    return (
+      '<div>Which POI do you want to move from Day ' + escapeHtml(String(dayNum)) + '?</div>' +
+      '<div class="ai-edit-choice-row">' +
+      names.map(function(name) {
+        return '<button type="button" class="ai-guided-action-btn" data-guided-move-poi="' + escapeHtml(String(name)) + '">' +
+          escapeHtml(String(name)) +
+          '</button>';
+      }).join('') +
+      '</div>'
+    );
+  }
+
+  function _renderGuidedMoveTargetDayChoices(dayOptions) {
+    const list = Array.isArray(dayOptions) ? dayOptions.filter(Boolean) : [];
+    if (!list.length) return '<div>Could not detect target days.</div>';
+    return (
+      '<div>Which day do you want to move it to?</div>' +
+      '<div class="ai-edit-choice-row">' +
+      list.map(function(dayNum) {
+        return '<button type="button" class="ai-guided-action-btn" data-guided-move-target-day="' + escapeHtml(String(dayNum)) + '">Day ' +
+          escapeHtml(String(dayNum)) +
           '</button>';
       }).join('') +
       '</div>'
@@ -743,6 +789,94 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     });
   }
 
+  function bindGuidedMoveSourceDayButtons(wrap) {
+    if (!wrap) return;
+    wrap.querySelectorAll('[data-guided-move-source-day]').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (wrap.dataset.choiceLocked === '1') return;
+        _lockChoiceButtons(wrap, '[data-guided-move-source-day]');
+        const sourceDay = Number(this.dataset.guidedMoveSourceDay);
+        if (!Number.isFinite(sourceDay) || sourceDay <= 0) return;
+        const plan = (itineraryDayPlansState || []).find(dp => Number(dp?.day) === sourceDay) || null;
+        const poiNames = (plan?.pois || []).map(p => String(p?.name || '').trim()).filter(Boolean);
+        guidedMoveContext = { source_day: sourceDay, poi_name: null };
+        const poiWrap = appendMessage('assistant', '', false, true);
+        setBubbleHtmlContent(poiWrap, _renderGuidedMovePoiChoices(sourceDay, poiNames));
+        bindGuidedMovePoiButtons(poiWrap);
+        const q = 'Which POI do you want to move?';
+        chatHistory.push({ role: 'assistant', content: q });
+        if (Number.isFinite(activeTripId) && activeTripId > 0) {
+          _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: q });
+        }
+      });
+    });
+  }
+
+  function bindGuidedMovePoiButtons(wrap) {
+    if (!wrap) return;
+    wrap.querySelectorAll('[data-guided-move-poi]').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (wrap.dataset.choiceLocked === '1') return;
+        _lockChoiceButtons(wrap, '[data-guided-move-poi]');
+        const poiName = String(this.dataset.guidedMovePoi || '').trim();
+        const sourceDay = Number(guidedMoveContext?.source_day);
+        if (!poiName || !Number.isFinite(sourceDay) || sourceDay <= 0) return;
+        guidedMoveContext = { source_day: sourceDay, poi_name: poiName };
+        const dayNums = (itineraryDayPlansState || [])
+          .map(dp => Number(dp?.day))
+          .filter(n => Number.isFinite(n) && n > 0 && n !== sourceDay);
+        const uniqueTargetDays = Array.from(new Set(dayNums));
+        const targetWrap = appendMessage('assistant', '', false, true);
+        setBubbleHtmlContent(targetWrap, _renderGuidedMoveTargetDayChoices(uniqueTargetDays));
+        bindGuidedMoveTargetDayButtons(targetWrap);
+        const q = 'Which day do you want to move it to?';
+        chatHistory.push({ role: 'assistant', content: q });
+        if (Number.isFinite(activeTripId) && activeTripId > 0) {
+          _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: q });
+        }
+      });
+    });
+  }
+
+  function bindGuidedMoveTargetDayButtons(wrap) {
+    if (!wrap) return;
+    wrap.querySelectorAll('[data-guided-move-target-day]').forEach(btn => {
+      btn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (wrap.dataset.choiceLocked === '1') return;
+        _lockChoiceButtons(wrap, '[data-guided-move-target-day]');
+        const targetDay = Number(this.dataset.guidedMoveTargetDay);
+        const sourceDay = Number(guidedMoveContext?.source_day);
+        const poiName = String(guidedMoveContext?.poi_name || '').trim();
+        if (!Number.isFinite(targetDay) || targetDay <= 0 || !Number.isFinite(sourceDay) || sourceDay <= 0 || !poiName) return;
+        const parsed = {
+          intent: 'move_poi',
+          day: sourceDay,
+          poi_name: poiName,
+          target_day: targetDay,
+          constraints: {
+            nearby: false,
+            same_type: null,
+            avoid_type: null
+          },
+          confidence: 1,
+          needs_clarification: false,
+          clarification_question: null,
+          clarification_type: null,
+          clarification_options: null
+        };
+        guidedMoveContext = null;
+        guidedEditAction = null;
+        await _applyParsedEditFromGuided(parsed);
+      });
+    });
+  }
+
   function bindGuidedActionButtons(wrap) {
     if (!wrap) return;
     wrap.querySelectorAll('.ai-guided-action-btn').forEach(btn => {
@@ -756,6 +890,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           guidedEditAction = null;
           guidedAddContext = null;
           guidedRemoveContext = null;
+          guidedMoveContext = null;
           const sourceWrap = appendMessage('assistant', '', false, true);
           setBubbleHtmlContent(sourceWrap, _renderGuidedAddSourceChoices());
           bindGuidedAddSourceButtons(sourceWrap);
@@ -770,6 +905,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           guidedEditAction = null;
           guidedAddContext = null;
           guidedRemoveContext = null;
+          guidedMoveContext = null;
           const dayNums = (itineraryDayPlansState || [])
             .map(dp => Number(dp?.day))
             .filter(n => Number.isFinite(n) && n > 0);
@@ -781,6 +917,25 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           chatHistory.push({ role: 'assistant', content: qRemove });
           if (Number.isFinite(activeTripId) && activeTripId > 0) {
             _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: qRemove });
+          }
+          return;
+        }
+        if (action === 'move_poi') {
+          guidedEditAction = null;
+          guidedAddContext = null;
+          guidedRemoveContext = null;
+          guidedMoveContext = null;
+          const dayNums = (itineraryDayPlansState || [])
+            .map(dp => Number(dp?.day))
+            .filter(n => Number.isFinite(n) && n > 0);
+          const uniqueDayNums = Array.from(new Set(dayNums));
+          const moveWrap = appendMessage('assistant', '', false, true);
+          setBubbleHtmlContent(moveWrap, _renderGuidedMoveSourceDayChoices(uniqueDayNums));
+          bindGuidedMoveSourceDayButtons(moveWrap);
+          const qMove = 'Which day do you want to move a POI from?';
+          chatHistory.push({ role: 'assistant', content: qMove });
+          if (Number.isFinite(activeTripId) && activeTripId > 0) {
+            _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: qMove });
           }
           return;
         }
@@ -1223,6 +1378,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     guidedEditAction = null;
     guidedAddContext = null;
     guidedRemoveContext = null;
+    guidedMoveContext = null;
     // Opening an existing trip should replay history only, never show new-trip questionnaire welcome.
     welcomeShown = true;
     fetchAndRenderItinerary(id, { silentSync: true });
@@ -1460,6 +1616,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       guidedEditAction = null;
       guidedAddContext = null;
       guidedRemoveContext = null;
+      guidedMoveContext = null;
       itineraryDayPlansState = [];
       poiOpenTimeCache.clear();
       window.__pendingItineraryDayPlans = [];
