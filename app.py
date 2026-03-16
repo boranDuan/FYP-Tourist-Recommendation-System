@@ -1151,6 +1151,7 @@ init_change_poi(
     db=db,
     Trip=Trip,
     Itinerary=Itinerary,
+    POI=POI,
     OpenAI=OpenAI,
     optimize_route_greedy_tsp=optimize_route_greedy_tsp,
     get_poi_duration=get_poi_duration,

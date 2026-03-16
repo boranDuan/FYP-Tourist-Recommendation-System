@@ -4,9 +4,18 @@ import os
 import re
 
 from flask import jsonify, request, session
+from addMustVisit import (
+    apply_choice_to_parsed as _add_apply_choice_to_parsed,
+    enforce_add_parse_rules as _add_enforce_parse_rules,
+    execute_add_must_visit as _execute_add_must_visit,
+    fill_clarification_options as _add_fill_clarification_options,
+    init_add_must_visit,
+    resolve_choice_from_text as _add_resolve_choice_from_text,
+)
 
 
 _CTX = {}
+_DIALOG_STATE = {}
 
 
 def init_change_poi(
@@ -14,6 +23,7 @@ def init_change_poi(
     db,
     Trip,
     Itinerary,
+    POI,
     OpenAI,
     optimize_route_greedy_tsp,
     get_poi_duration,
@@ -33,6 +43,7 @@ def init_change_poi(
             "db": db,
             "Trip": Trip,
             "Itinerary": Itinerary,
+            "POI": POI,
             "OpenAI": OpenAI,
             "optimize_route_greedy_tsp": optimize_route_greedy_tsp,
             "get_poi_duration": get_poi_duration,
@@ -47,12 +58,33 @@ def init_change_poi(
             "get_trip_days": get_trip_days,
         }
     )
+    init_add_must_visit(db=db, POI=POI)
 
 
 def _ctx(key):
     if key not in _CTX:
         raise RuntimeError(f"changePOI is not initialized: missing '{key}'")
     return _CTX[key]
+
+
+def _dialog_key(user_id, trip_id):
+    return f"{int(user_id)}:{int(trip_id)}"
+
+
+def _get_dialog_state(user_id, trip_id):
+    return _DIALOG_STATE.get(_dialog_key(user_id, trip_id))
+
+
+def _set_dialog_state(user_id, trip_id, *, parsed, clarification_type=None, clarification_options=None):
+    _DIALOG_STATE[_dialog_key(user_id, trip_id)] = {
+        "parsed": copy.deepcopy(parsed or {}),
+        "clarification_type": clarification_type,
+        "clarification_options": list(clarification_options or []),
+    }
+
+
+def _clear_dialog_state(user_id, trip_id):
+    _DIALOG_STATE.pop(_dialog_key(user_id, trip_id), None)
 
 
 def _resp_error(message, status=400, **extra):
@@ -124,7 +156,123 @@ def _extract_json_object(text):
         return None
 
 
-def _llm_parse_itinerary_edit(user_text):
+def _build_itinerary_parse_context(day_plans, max_days=7, max_pois_per_day=10):
+    if not isinstance(day_plans, list) or not day_plans:
+        return ""
+    lines = []
+    for dp in day_plans[: max(1, int(max_days))]:
+        day_num = (dp or {}).get("day")
+        pois = (dp or {}).get("pois") or []
+        names = []
+        for p in pois[: max(1, int(max_pois_per_day))]:
+            n = str((p or {}).get("name") or "").strip()
+            if n:
+                names.append(n)
+        if names:
+            lines.append(f"Day {day_num}: " + " | ".join(names))
+    return "\n".join(lines)
+
+
+def _get_active_itinerary_for_trip(trip_id):
+    Itinerary = _ctx("Itinerary")
+    return (
+        Itinerary.query
+        .filter_by(trip_id=trip_id, is_active=True)
+        .order_by(Itinerary.version.desc())
+        .first()
+    )
+
+
+def _enforce_parse_clarification_rules(parsed, user_text):
+    parsed = parsed if isinstance(parsed, dict) else {}
+    intent = str(parsed.get("intent") or "").strip()
+    edit_intents = {"remove_poi", "replace_poi", "move_poi", "add_poi"}
+
+    # For non-edit chat (e.g. "thanks"), never force itinerary clarification prompts.
+    if intent not in edit_intents:
+        parsed["needs_clarification"] = False
+        parsed["clarification_question"] = None
+        parsed["clarification_type"] = None
+        parsed["clarification_options"] = None
+        return parsed
+
+    try:
+        conf = float(parsed.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        conf = 0.0
+    if conf < 0.6 and not parsed.get("needs_clarification"):
+        parsed["needs_clarification"] = True
+        parsed["clarification_question"] = (
+            "I am not fully sure I understood. Please tell me the day number and exact POI name."
+        )
+
+    if intent in edit_intents:
+        poi_name = str(parsed.get("poi_name") or "").strip()
+        if not poi_name:
+            parsed["needs_clarification"] = True
+            parsed["clarification_question"] = "Which exact POI do you want to edit?"
+
+    if intent == "move_poi":
+        target_day = parsed.get("target_day")
+        if target_day is None and not parsed.get("needs_clarification"):
+            parsed["needs_clarification"] = True
+            parsed["clarification_question"] = "Which target day do you want to move it to?"
+
+    parsed = _add_enforce_parse_rules(parsed)
+
+    txt = (user_text or "").lower()
+    explicit_replace = bool(re.search(r"\b(replace|instead|swap|substitute)\b|换成|替换|改成|换一个", txt))
+    if intent == "remove_poi" and not explicit_replace and not parsed.get("needs_clarification"):
+        parsed["needs_clarification"] = True
+        parsed["clarification_type"] = "remove_or_replace"
+        parsed["clarification_options"] = ["remove_only", "replace_nearby_same_type"]
+        parsed["clarification_question"] = (
+            "Do you want to remove it only, or remove and replace it with a similar nearby POI?"
+        )
+    return parsed
+
+
+def _resolve_choice_from_user_text(user_text, options, clarification_type=None):
+    txt = str(user_text or "").strip().lower()
+    if not txt:
+        return None
+    opts = [str(o or "").strip() for o in (options or []) if str(o or "").strip()]
+    opts_lower = {o.lower(): o for o in opts}
+    if txt in opts_lower:
+        return opts_lower[txt]
+
+    add_choice = _add_resolve_choice_from_text(user_text, opts, clarification_type)
+    if add_choice:
+        return add_choice
+
+    if clarification_type == "remove_or_replace":
+        if "replace" in txt and "replace_nearby_same_type" in opts:
+            return "replace_nearby_same_type"
+        if any(k in txt for k in ("remove", "delete", "skip")) and "remove_only" in opts:
+            return "remove_only"
+
+    return None
+
+
+def _apply_choice_to_parsed(parsed, choice, clarification_type=None):
+    out = copy.deepcopy(parsed or {})
+    out["constraints"] = dict(out.get("constraints") or {})
+    out["needs_clarification"] = False
+    out["clarification_question"] = None
+    out["clarification_type"] = None
+    out["clarification_options"] = None
+
+    if choice == "remove_only":
+        out["intent"] = "remove_poi"
+    elif choice == "replace_nearby_same_type":
+        out["intent"] = "replace_poi"
+        out["constraints"]["nearby"] = True
+    elif choice in ("add_direct", "replace_existing") or str(choice).startswith("day_") or clarification_type == "choose_replace_target_poi":
+        out = _add_apply_choice_to_parsed(out, choice, clarification_type)
+    return out
+
+
+def _llm_parse_itinerary_edit(user_text, itinerary_context=""):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None, "AI parser is not configured (missing OPENAI_API_KEY)"
@@ -165,14 +313,23 @@ Rules:
 - If ambiguous, set needs_clarification=true and ask one short question.
 - Do not invent POI names.
 - Use null when value is not provided.
+- If itinerary context is provided, prefer selecting poi_name from that list.
 """
     try:
         client = OpenAI(api_key=api_key)
+        user_payload = (user_text or "").strip()
+        if itinerary_context:
+            user_payload = (
+                "User request:\n"
+                + (user_text or "")
+                + "\n\nCurrent itinerary context (day -> POIs):\n"
+                + itinerary_context
+            )
         resp = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": parser_system},
-                {"role": "user", "content": user_text or ""},
+                {"role": "user", "content": user_payload},
             ],
             max_tokens=320,
         )
@@ -191,17 +348,7 @@ Rules:
         parsed.setdefault("clarification_question", None)
         parsed.setdefault("clarification_type", None)
         parsed.setdefault("clarification_options", None)
-
-        intent = (parsed.get("intent") or "").strip()
-        txt = (user_text or "").lower()
-        explicit_replace = bool(re.search(r"\b(replace|instead|swap|substitute)\b|换成|替换|改成|换一个", txt))
-        if intent == "remove_poi" and not explicit_replace and not parsed.get("needs_clarification"):
-            parsed["needs_clarification"] = True
-            parsed["clarification_type"] = "remove_or_replace"
-            parsed["clarification_options"] = ["remove_only", "replace_nearby_same_type"]
-            parsed["clarification_question"] = (
-                "Do you want to remove it only, or remove and replace it with a similar nearby POI?"
-            )
+        parsed = _enforce_parse_clarification_rules(parsed, user_text)
         return parsed, None
     except Exception as e:
         return None, str(e)
@@ -258,6 +405,17 @@ def _pick_poi_match(pois, target_name):
             best_score = score
             best_idx = i
     return best_idx, best_score
+
+
+def _pick_existing_poi_for_replace(plan):
+    pois = list((plan or {}).get("pois") or [])
+    if not pois:
+        return None
+    # Prefer replacing non-must-visit POI first.
+    for i, p in enumerate(pois):
+        if not (p or {}).get("is_must_visit"):
+            return i, p
+    return len(pois) - 1, pois[-1]
 
 
 def _remove_poi_from_plan(plan, poi_name):
@@ -615,9 +773,68 @@ def register_change_poi_routes(app):
         if not user_text:
             return _resp_error("user_text is required", status=400)
 
-        parsed, err = _llm_parse_itinerary_edit(user_text)
+        pending = _get_dialog_state(user_id, trip_id)
+        if pending:
+            p = copy.deepcopy(pending.get("parsed") or {})
+            ctype = pending.get("clarification_type")
+            opts = list(pending.get("clarification_options") or [])
+            picked = _resolve_choice_from_user_text(user_text, opts, ctype)
+            if picked:
+                parsed = _apply_choice_to_parsed(p, picked, clarification_type=ctype)
+                parsed = _enforce_parse_clarification_rules(parsed, user_text)
+                active_for_opts = _get_active_itinerary_for_trip(trip_id)
+                day_plans_for_opts = (active_for_opts.content_json or {}).get("day_plans") if (active_for_opts and isinstance(active_for_opts.content_json, dict)) else []
+                parsed = _add_fill_clarification_options(parsed, day_plans_for_opts)
+                if parsed.get("needs_clarification"):
+                    _set_dialog_state(
+                        user_id,
+                        trip_id,
+                        parsed=parsed,
+                        clarification_type=parsed.get("clarification_type"),
+                        clarification_options=parsed.get("clarification_options") or [],
+                    )
+                else:
+                    _clear_dialog_state(user_id, trip_id)
+                return _resp_parsed(trip_id, parsed)
+            if ctype == "choose_replace_target_poi":
+                parsed = copy.deepcopy(p)
+                parsed["constraints"] = dict(parsed.get("constraints") or {})
+                parsed["constraints"]["replace_poi_name"] = user_text
+                parsed = _enforce_parse_clarification_rules(parsed, user_text)
+                active_for_opts = _get_active_itinerary_for_trip(trip_id)
+                day_plans_for_opts = (active_for_opts.content_json or {}).get("day_plans") if (active_for_opts and isinstance(active_for_opts.content_json, dict)) else []
+                parsed = _add_fill_clarification_options(parsed, day_plans_for_opts)
+                if parsed.get("needs_clarification"):
+                    _set_dialog_state(
+                        user_id,
+                        trip_id,
+                        parsed=parsed,
+                        clarification_type=parsed.get("clarification_type"),
+                        clarification_options=parsed.get("clarification_options") or [],
+                    )
+                else:
+                    _clear_dialog_state(user_id, trip_id)
+                return _resp_parsed(trip_id, parsed)
+            return _resp_parsed(trip_id, p)
+
+        active = _get_active_itinerary_for_trip(trip_id)
+        context = _build_itinerary_parse_context((active.content_json or {}).get("day_plans") if active and isinstance(active.content_json, dict) else [])
+        parsed, err = _llm_parse_itinerary_edit(user_text, itinerary_context=context)
         if err:
             return _resp_error(err, status=500)
+
+        day_plans_for_opts = (active.content_json or {}).get("day_plans") if (active and isinstance(active.content_json, dict)) else []
+        parsed = _add_fill_clarification_options(parsed, day_plans_for_opts)
+        if parsed.get("needs_clarification"):
+            _set_dialog_state(
+                user_id,
+                trip_id,
+                parsed=parsed,
+                clarification_type=parsed.get("clarification_type"),
+                clarification_options=parsed.get("clarification_options") or [],
+            )
+        else:
+            _clear_dialog_state(user_id, trip_id)
 
         return _resp_parsed(trip_id, parsed)
 
@@ -641,13 +858,16 @@ def register_change_poi_routes(app):
         if trip.user_id != user_id:
             return _resp_error("You do not have access to this trip.", status=403)
 
+        active = _get_active_itinerary_for_trip(trip_id)
+        parse_context = _build_itinerary_parse_context((active.content_json or {}).get("day_plans") if active and isinstance(active.content_json, dict) else [])
+
         data = request.get_json() or {}
         parsed = data.get("parsed") if isinstance(data.get("parsed"), dict) else None
         if not parsed:
             user_text = (data.get("user_text") or "").strip()
             if not user_text:
                 return _resp_error("parsed or user_text is required", status=400)
-            parsed, err = _llm_parse_itinerary_edit(user_text)
+            parsed, err = _llm_parse_itinerary_edit(user_text, itinerary_context=parse_context)
             if err:
                 return _resp_error(err, status=500)
 
@@ -661,9 +881,9 @@ def register_change_poi_routes(app):
             )
 
         intent = (parsed.get("intent") or "").strip()
-        if intent not in ("remove_poi", "replace_poi", "move_poi"):
+        if intent not in ("remove_poi", "replace_poi", "move_poi", "add_poi"):
             return _resp_error(
-                f"Unsupported intent for MVP apply-edit: {intent or 'unknown'} (currently supports remove_poi/replace_poi/move_poi)",
+                f"Unsupported intent for MVP apply-edit: {intent or 'unknown'} (currently supports remove_poi/replace_poi/move_poi/add_poi)",
                 status=400,
                 parsed=parsed,
             )
@@ -672,17 +892,11 @@ def register_change_poi_routes(app):
         poi_name = (parsed.get("poi_name") or "").strip()
         if not poi_name:
             return _resp_error(
-                "poi_name is required for remove_poi/replace_poi/move_poi",
+                "poi_name is required for remove_poi/replace_poi/move_poi/add_poi",
                 status=400,
                 parsed=parsed,
             )
 
-        active = (
-            Itinerary.query
-            .filter_by(trip_id=trip_id, is_active=True)
-            .order_by(Itinerary.version.desc())
-            .first()
-        )
         if not active:
             pref = trip.preference
             if not pref:
@@ -716,45 +930,80 @@ def register_change_poi_routes(app):
                 move_to_day = None
 
         source_plan = None
-        if day is not None:
-            source_plan = _find_day_plan(day_plans, day)
-            if not source_plan:
-                return _resp_error(f"Day {day} not found in current itinerary", status=400)
-        else:
-            strong_matches = []
-            weak_matches = []
-            for dp in day_plans:
-                idx, score = _pick_poi_match(dp.get("pois") or [], poi_name)
-                if idx >= 0:
-                    if score >= 2:
-                        strong_matches.append(dp)
-                    else:
-                        weak_matches.append(dp)
-            if len(strong_matches) == 0 and len(weak_matches) == 0:
-                return _resp_error(f"POI not found: {poi_name}", status=404)
-            if len(strong_matches) > 1:
-                days = [m.get("day") for m in strong_matches]
-                return _resp_clarify(
-                    trip_id,
-                    parsed,
-                    f"'{poi_name}' appears in multiple days {days}. Which day do you want to edit?",
-                )
-            if len(strong_matches) == 1:
-                source_plan = strong_matches[0]
-            elif len(weak_matches) == 1:
-                source_plan = weak_matches[0]
+        if intent != "add_poi":
+            if day is not None:
+                source_plan = _find_day_plan(day_plans, day)
+                if not source_plan:
+                    return _resp_error(f"Day {day} not found in current itinerary", status=400)
             else:
-                days = [m.get("day") for m in weak_matches]
+                strong_matches = []
+                weak_matches = []
+                for dp in day_plans:
+                    idx, score = _pick_poi_match(dp.get("pois") or [], poi_name)
+                    if idx >= 0:
+                        if score >= 2:
+                            strong_matches.append(dp)
+                        else:
+                            weak_matches.append(dp)
+                if len(strong_matches) == 0 and len(weak_matches) == 0:
+                    return _resp_error(f"POI not found: {poi_name}", status=404)
+                if len(strong_matches) > 1:
+                    days = [m.get("day") for m in strong_matches]
+                    return _resp_clarify(
+                        trip_id,
+                        parsed,
+                        f"'{poi_name}' appears in multiple days {days}. Which day do you want to edit?",
+                    )
+                if len(strong_matches) == 1:
+                    source_plan = strong_matches[0]
+                elif len(weak_matches) == 1:
+                    source_plan = weak_matches[0]
+                else:
+                    days = [m.get("day") for m in weak_matches]
+                    return _resp_clarify(
+                        trip_id,
+                        parsed,
+                        (
+                            f"I found multiple possible POIs matching '{poi_name}' in days {days}. "
+                            "Please tell me the day number or full POI name."
+                        ),
+                    )
+
+        if intent == "add_poi":
+            add_result = _execute_add_must_visit(
+                parsed=parsed,
+                poi_name=poi_name,
+                day=day,
+                day_plans=day_plans,
+                content=content,
+                trip=trip,
+                compute_candidates_and_itinerary=compute_candidates_and_itinerary,
+                find_day_plan=_find_day_plan,
+                pick_poi_match=_pick_poi_match,
+                poi_uid=_poi_uid,
+                recompute_plan_meta=_recompute_plan_meta,
+                append_with_constraints=_append_poi_to_plan_with_constraints,
+            )
+            if add_result.get("kind") == "error":
+                return _resp_error(
+                    add_result.get("message") or "Failed to add POI",
+                    status=int(add_result.get("status") or 400),
+                    parsed=parsed,
+                )
+            if add_result.get("kind") == "clarify":
+                parsed = add_result.get("parsed") or parsed
                 return _resp_clarify(
                     trip_id,
                     parsed,
-                    (
-                        f"I found multiple possible POIs matching '{poi_name}' in days {days}. "
-                        "Please tell me the day number or full POI name."
-                    ),
+                    add_result.get("question"),
+                    clarification_type=add_result.get("clarification_type"),
+                    clarification_options=add_result.get("clarification_options"),
                 )
+            removed = add_result.get("removed")
+            applied_day = add_result.get("applied_day")
+            added = list(add_result.get("added") or [])
 
-        if intent == "move_poi":
+        elif intent == "move_poi":
             if move_to_day is None:
                 return _resp_clarify(trip_id, parsed, "Which target day do you want to move it to?")
             target_plan = _find_day_plan(day_plans, move_to_day)
@@ -781,7 +1030,7 @@ def register_change_poi_routes(app):
             removed = _remove_poi_from_plan(source_plan, poi_name)
             applied_day = source_plan.get("day")
 
-        if not removed:
+        if intent != "add_poi" and not removed:
             return _resp_error(f"POI not found in target day: {poi_name}", status=404)
 
         if intent in ("remove_poi", "replace_poi"):
@@ -816,6 +1065,7 @@ def register_change_poi_routes(app):
         content["summary"] = format_itinerary_summary(day_plans, trip_days)
 
         new_row = _save_new_itinerary_version(trip_id, content)
+        _clear_dialog_state(user_id, trip_id)
 
         return _resp_applied(
             trip_id=trip_id,
@@ -823,7 +1073,11 @@ def register_change_poi_routes(app):
             applied_action={
                 "intent": intent,
                 "day": applied_day,
-                "removed_poi": removed.get("name") if isinstance(removed, dict) else poi_name,
+                "removed_poi": (
+                    (removed.get("name") if isinstance(removed, dict) else poi_name)
+                    if intent != "add_poi"
+                    else None
+                ),
                 "target_day": move_to_day if intent == "move_poi" else None,
                 "added_pois": [x.get("name") for x in added if isinstance(x, dict)],
             },

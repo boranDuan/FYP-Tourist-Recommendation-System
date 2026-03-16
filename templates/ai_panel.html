@@ -198,6 +198,7 @@
   let itineraryDayPlansState = [];
   let activeTripId = null;
   const poiOpenTimeCache = new Map();
+  const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
 
   const AI_WELCOME = `Hi!
 I can help you create a personalized Dublin travel itinerary.
@@ -231,6 +232,36 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     return wrap;
   }
 
+  function _tripHistoryKey(tripId) {
+    return TRIP_HISTORY_KEY_PREFIX + String(tripId);
+  }
+
+  function _loadTripHistory(tripId) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return [];
+    try {
+      const raw = localStorage.getItem(_tripHistoryKey(tripId));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function _saveTripHistory(tripId, records) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return;
+    try {
+      localStorage.setItem(_tripHistoryKey(tripId), JSON.stringify(Array.isArray(records) ? records.slice(-200) : []));
+    } catch (_) {}
+  }
+
+  function _appendTripHistoryRecord(tripId, record) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return;
+    const current = _loadTripHistory(tripId);
+    current.push(Object.assign({ ts: Date.now() }, record || {}));
+    _saveTripHistory(tripId, current);
+  }
+
   function setBubbleContent(wrap, content) {
     const bubble = wrap.querySelector('.ai-msg-bubble');
     if (bubble) {
@@ -262,6 +293,81 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function _choiceLabel(choice) {
+    const c = String(choice || '');
+    if (c === 'remove_only') return 'Remove only';
+    if (c === 'replace_nearby_same_type') return 'Remove & replace nearby';
+    if (c === 'add_direct') return 'Add to itinerary';
+    if (c === 'replace_existing') return 'Replace existing POI';
+    if (c.startsWith('day_')) {
+      const n = Number(c.slice(4));
+      if (Number.isFinite(n) && n > 0) return 'Day ' + String(n);
+    }
+    return c.replace(/_/g, ' ');
+  }
+
+  function _applyChoiceToParsed(parsed, choice) {
+    if (!parsed || typeof parsed !== 'object') return parsed;
+    const clarificationType = String(parsed.clarification_type || '');
+    const out = Object.assign({}, parsed);
+    out.constraints = Object.assign({}, out.constraints || {});
+    out.needs_clarification = false;
+    out.clarification_question = null;
+    out.clarification_type = null;
+    out.clarification_options = null;
+
+    if (choice === 'replace_nearby_same_type') {
+      out.intent = 'replace_poi';
+      out.constraints.nearby = true;
+      out.constraints.same_type = (out?.constraints?.same_type || null);
+      return out;
+    }
+    if (choice === 'remove_only') {
+      out.intent = 'remove_poi';
+      return out;
+    }
+    if (choice === 'add_direct') {
+      out.intent = 'add_poi';
+      out.constraints.add_mode = 'append';
+      return out;
+    }
+    if (choice === 'replace_existing') {
+      out.intent = 'add_poi';
+      out.constraints.add_mode = 'replace';
+      return out;
+    }
+    if (String(choice).startsWith('day_')) {
+      const n = Number(String(choice).slice(4));
+      if (Number.isFinite(n) && n > 0) {
+        out.day = n;
+      }
+      return out;
+    }
+    if (clarificationType === 'choose_replace_target_poi') {
+      out.intent = 'add_poi';
+      out.constraints.add_mode = 'replace';
+      out.constraints.replace_poi_name = String(choice || '').trim();
+      return out;
+    }
+    return out;
+  }
+
+  function _renderClarificationChoices(q, parsed, options) {
+    const opts = Array.isArray(options) ? options.filter(Boolean) : [];
+    if (!opts.length) return '<div>' + escapeHtml(q) + '</div>';
+    const parsedEscaped = escapeHtml(JSON.stringify(parsed || {}));
+    return (
+      '<div>' + escapeHtml(q) + '</div>' +
+      '<div class="ai-edit-choice-row">' +
+      opts.map(function(opt) {
+        return '<button type="button" class="ai-edit-choice-btn" data-choice="' +
+          escapeHtml(String(opt)) +
+          '" data-parsed="' + parsedEscaped + '">' + escapeHtml(_choiceLabel(opt)) + '</button>';
+      }).join('') +
+      '</div>'
+    );
   }
 
   const ITINERARY_SEQ_COLORS = ['#3b82f6', '#ec4899', '#22c55e', '#8b5cf6', '#f59e0b'];
@@ -532,6 +638,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       btn.addEventListener('click', async function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (wrap.dataset.choiceLocked === '1') return;
+        wrap.dataset.choiceLocked = '1';
+        wrap.querySelectorAll('.ai-edit-choice-btn').forEach(b => {
+          b.disabled = true;
+          b.style.opacity = '0.6';
+          b.style.cursor = 'not-allowed';
+        });
         if (!(Number.isFinite(activeTripId) && activeTripId > 0)) return;
         const choice = this.dataset.choice;
         let parsed = null;
@@ -542,19 +655,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         }
         if (!parsed || typeof parsed !== 'object') return;
 
-        if (choice === 'replace_nearby_same_type') {
-          parsed.intent = 'replace_poi';
-          parsed.needs_clarification = false;
-          parsed.clarification_question = null;
-          parsed.constraints = Object.assign({}, parsed.constraints || {}, {
-            nearby: true,
-            same_type: (parsed?.constraints?.same_type || null),
-          });
-        } else {
-          parsed.intent = 'remove_poi';
-          parsed.needs_clarification = false;
-          parsed.clarification_question = null;
-        }
+        parsed = _applyChoiceToParsed(parsed, choice);
 
         const placeholderWrap = appendMessage('assistant', '', true);
         try {
@@ -567,12 +668,20 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           if (applyData && applyData.success && applyData.applied) {
             itineraryDayPlansState = Array.isArray(applyData.day_plans) ? applyData.day_plans : [];
             const appliedDay = Number(applyData?.applied_action?.day) || 1;
+            const actionIntent = String(applyData?.applied_action?.intent || parsed.intent || '');
             const removedName = applyData?.applied_action?.removed_poi || 'target POI';
             const addedNames = Array.isArray(applyData?.applied_action?.added_pois)
               ? applyData.applied_action.added_pois.filter(Boolean)
               : [];
             const addedText = addedNames.length ? (' Added: ' + addedNames.join(', ') + '.') : '';
-            const prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
+            let prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + ').';
+            if (actionIntent === 'add_poi') {
+              prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): added ' + (addedNames[0] || parsed.poi_name || 'POI') + '.';
+            } else if (actionIntent === 'move_poi') {
+              prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): moved ' + removedName + '.' + addedText;
+            } else {
+              prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
+            }
             const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
             setBubbleHtmlContent(placeholderWrap, html);
             bindItineraryDayEvents(placeholderWrap);
@@ -580,18 +689,19 @@ This will help me recommend attractions and generate a realistic day-by-day plan
               window.setItineraryDayPlans(itineraryDayPlansState, appliedDay);
             }
             chatHistory.push({ role: 'assistant', content: prefix });
+            _appendTripHistoryRecord(activeTripId, {
+              type: 'itinerary',
+              role: 'assistant',
+              content: prefix,
+              day_plans: itineraryDayPlansState,
+            });
             return;
           }
           if (applyData && applyData.success && applyData.needs_clarification) {
             const q = applyData.clarification_question || 'Could you clarify your request?';
-            if ((applyData.clarification_type || '') === 'remove_or_replace') {
-              const parsedEscaped = escapeHtml(JSON.stringify(applyData.parsed || parsed || {}));
-              const html =
-                '<div>' + escapeHtml(q) + '</div>' +
-                '<div class="ai-edit-choice-row">' +
-                  '<button type="button" class="ai-edit-choice-btn" data-choice="remove_only" data-parsed="' + parsedEscaped + '">Remove only</button>' +
-                  '<button type="button" class="ai-edit-choice-btn" data-choice="replace_nearby_same_type" data-parsed="' + parsedEscaped + '">Remove & replace nearby</button>' +
-                '</div>';
+            const options = Array.isArray(applyData.clarification_options) ? applyData.clarification_options : null;
+            if (options && options.length) {
+              const html = _renderClarificationChoices(q, applyData.parsed || parsed || {}, options);
               setBubbleHtmlContent(placeholderWrap, html);
               bindEditChoiceButtons(placeholderWrap);
             } else {
@@ -608,28 +718,66 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     });
   }
 
-  async function fetchAndRenderItinerary(tripId) {
+  async function fetchAndRenderItinerary(tripId, options) {
+    const silentSync = !!(options && options.silentSync);
+    const history = _loadTripHistory(tripId);
+    if (history.length > 0) {
+      messagesEl.innerHTML = '';
+      chatHistory = [];
+      history.forEach(rec => {
+        if (!rec || typeof rec !== 'object') return;
+        if (rec.type === 'text') {
+          appendMessage(rec.role || 'assistant', rec.content || '', false, false);
+          if ((rec.role === 'user' || rec.role === 'assistant') && rec.content) {
+            chatHistory.push({ role: rec.role, content: rec.content });
+          }
+        } else if (rec.type === 'itinerary') {
+          const dayPlans = Array.isArray(rec.day_plans) ? rec.day_plans : [];
+          const prefix = String(rec.content || 'Itinerary updated.');
+          const wrap = appendMessage('assistant', '', false, true);
+          const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(dayPlans);
+          setBubbleHtmlContent(wrap, html);
+          bindItineraryDayEvents(wrap);
+          itineraryDayPlansState = dayPlans;
+        }
+      });
+      const lastPlans = [...history].reverse().find(x => Array.isArray(x?.day_plans));
+      if (lastPlans && typeof window.setItineraryDayPlans === 'function') {
+        window.setItineraryDayPlans(lastPlans.day_plans, 1);
+      }
+    }
+
     activeTripId = Number(tripId) || null;
-    const placeholderWrap = appendMessage('assistant', '', true);
+    const placeholderWrap = (!silentSync || history.length === 0) ? appendMessage('assistant', '', true) : null;
     try {
       const res = await fetch('/api/trips/' + encodeURIComponent(tripId) + '/candidates');
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setBubbleContent(placeholderWrap, 'Trip saved, but itinerary is not available right now.');
+        if (placeholderWrap) setBubbleContent(placeholderWrap, 'Trip saved, but itinerary is not available right now.');
         return;
       }
       itineraryDayPlansState = Array.isArray(data.day_plans) ? data.day_plans : [];
       window.__pendingItineraryDayPlans = itineraryDayPlansState;
       window.__pendingItineraryCurrentDay = 1;
-      const html = renderItineraryHtml(itineraryDayPlansState);
-      setBubbleHtmlContent(placeholderWrap, html);
-      bindItineraryDayEvents(placeholderWrap);
+      if (placeholderWrap) {
+        const html = renderItineraryHtml(itineraryDayPlansState);
+        setBubbleHtmlContent(placeholderWrap, html);
+        bindItineraryDayEvents(placeholderWrap);
+      }
       if (typeof window.setItineraryDayPlans === 'function') {
         window.setItineraryDayPlans(itineraryDayPlansState, 1);
       }
-      chatHistory.push({ role: 'assistant', content: 'Itinerary generated.' });
+      if (placeholderWrap) {
+        chatHistory.push({ role: 'assistant', content: 'Itinerary generated.' });
+        _appendTripHistoryRecord(tripId, {
+          type: 'itinerary',
+          role: 'assistant',
+          content: 'Itinerary generated.',
+          day_plans: itineraryDayPlansState,
+        });
+      }
     } catch (err) {
-      setBubbleContent(placeholderWrap, 'Trip saved, but failed to load itinerary.');
+      if (placeholderWrap) setBubbleContent(placeholderWrap, 'Trip saved, but failed to load itinerary.');
     }
   }
 
@@ -637,10 +785,14 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const id = Number(tripId);
     if (!(Number.isFinite(id) && id > 0)) return;
     activeTripId = id;
-    fetchAndRenderItinerary(id);
+    // Opening an existing trip should replay history only, never show new-trip questionnaire welcome.
+    welcomeShown = true;
+    fetchAndRenderItinerary(id, { silentSync: true });
   };
 
   function showWelcomeMessage() {
+    if (Number.isFinite(activeTripId) && activeTripId > 0) return;
+    if (messagesEl.children.length > 0) return;
     if (welcomeShown) return;
     welcomeShown = true;
     const wrap = appendMessage('assistant', AI_WELCOME, false, true);
@@ -699,6 +851,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
     appendMessage('user', raw);
     chatHistory.push({ role: 'user', content: raw });
+    if (Number.isFinite(activeTripId) && activeTripId > 0) {
+      _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'user', content: raw });
+    }
 
     const placeholderWrap = appendMessage('assistant', '', true);
 
@@ -719,25 +874,23 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           const parsed = parseData.parsed || {};
           if (parsed.needs_clarification) {
             const q = parsed.clarification_question || 'Could you clarify your request?';
-            if ((parsed.clarification_type || '') === 'remove_or_replace') {
-              const parsedEscaped = escapeHtml(JSON.stringify(parsed));
-              const html =
-                '<div>' + escapeHtml(q) + '</div>' +
-                '<div class="ai-edit-choice-row">' +
-                  '<button type="button" class="ai-edit-choice-btn" data-choice="remove_only" data-parsed="' + parsedEscaped + '">Remove only</button>' +
-                  '<button type="button" class="ai-edit-choice-btn" data-choice="replace_nearby_same_type" data-parsed="' + parsedEscaped + '">Remove & replace nearby</button>' +
-                '</div>';
+            const options = Array.isArray(parsed.clarification_options) ? parsed.clarification_options : null;
+            if (options && options.length) {
+              const html = _renderClarificationChoices(q, parsed, options);
               setBubbleHtmlContent(placeholderWrap, html);
               bindEditChoiceButtons(placeholderWrap);
             } else {
               setBubbleContent(placeholderWrap, q);
             }
             chatHistory.push({ role: 'assistant', content: q });
+            if (Number.isFinite(activeTripId) && activeTripId > 0) {
+              _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: q });
+            }
             return;
           }
 
-          // 自动执行：remove / replace
-          if (parsed.intent === 'remove_poi' || parsed.intent === 'replace_poi') {
+          // 自动执行：remove / replace / move / add
+          if (parsed.intent === 'remove_poi' || parsed.intent === 'replace_poi' || parsed.intent === 'move_poi' || parsed.intent === 'add_poi') {
             const applyRes = await fetch('/api/trips/' + encodeURIComponent(activeTripId) + '/itinerary/apply-edit', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -753,7 +906,14 @@ This will help me recommend attractions and generate a realistic day-by-day plan
                 ? applyData.applied_action.added_pois.filter(Boolean)
                 : [];
               const addedText = addedNames.length ? (' Added: ' + addedNames.join(', ') + '.') : '';
-              const prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
+              let prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + ').';
+              if (parsed.intent === 'add_poi') {
+                prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): added ' + (addedNames[0] || parsed.poi_name || 'POI') + '.';
+              } else if (parsed.intent === 'move_poi') {
+                prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): moved ' + removedName + '.' + addedText;
+              } else {
+                prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
+              }
               const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
               setBubbleHtmlContent(placeholderWrap, html);
               bindItineraryDayEvents(placeholderWrap);
@@ -761,24 +921,30 @@ This will help me recommend attractions and generate a realistic day-by-day plan
                 window.setItineraryDayPlans(itineraryDayPlansState, appliedDay);
               }
               chatHistory.push({ role: 'assistant', content: prefix });
+              if (Number.isFinite(activeTripId) && activeTripId > 0) {
+                _appendTripHistoryRecord(activeTripId, {
+                  type: 'itinerary',
+                  role: 'assistant',
+                  content: prefix,
+                  day_plans: itineraryDayPlansState,
+                });
+              }
               return;
             }
             if (applyData && applyData.success && applyData.needs_clarification) {
               const q = applyData.clarification_question || 'Could you clarify your request?';
-              if ((applyData.clarification_type || '') === 'remove_or_replace') {
-                const parsedEscaped = escapeHtml(JSON.stringify(applyData.parsed || parsed || {}));
-                const html =
-                  '<div>' + escapeHtml(q) + '</div>' +
-                  '<div class="ai-edit-choice-row">' +
-                    '<button type="button" class="ai-edit-choice-btn" data-choice="remove_only" data-parsed="' + parsedEscaped + '">Remove only</button>' +
-                    '<button type="button" class="ai-edit-choice-btn" data-choice="replace_nearby_same_type" data-parsed="' + parsedEscaped + '">Remove & replace nearby</button>' +
-                  '</div>';
+              const options = Array.isArray(applyData.clarification_options) ? applyData.clarification_options : null;
+              if (options && options.length) {
+                const html = _renderClarificationChoices(q, applyData.parsed || parsed || {}, options);
                 setBubbleHtmlContent(placeholderWrap, html);
                 bindEditChoiceButtons(placeholderWrap);
               } else {
                 setBubbleContent(placeholderWrap, q);
               }
               chatHistory.push({ role: 'assistant', content: q });
+              if (Number.isFinite(activeTripId) && activeTripId > 0) {
+                _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: q });
+              }
               return;
             }
             if (applyData && applyData.message) {
@@ -800,6 +966,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       if (data.success && data.reply) {
         setBubbleContent(placeholderWrap, data.reply);
         chatHistory.push({ role: 'assistant', content: data.reply });
+        if (Number.isFinite(activeTripId) && activeTripId > 0) {
+          _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: data.reply });
+        }
       } else {
         setBubbleContent(placeholderWrap, 'Sorry, something went wrong. ' + (data.message || ''));
       }
