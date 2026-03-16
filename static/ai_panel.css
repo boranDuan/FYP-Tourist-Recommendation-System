@@ -132,7 +132,8 @@ body.show-ai-panel #ai-panel {
   flex-wrap: wrap;
 }
 
-.ai-edit-choice-btn {
+.ai-edit-choice-btn,
+.ai-guided-action-btn {
   border: 1px solid #93c5fd;
   background: #eff6ff;
   color: #1d4ed8;
@@ -141,10 +142,19 @@ body.show-ai-panel #ai-panel {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
 }
 
-.ai-edit-choice-btn:hover {
+.ai-edit-choice-btn:hover,
+.ai-guided-action-btn:hover {
   background: #dbeafe;
+}
+
+.ai-edit-choice-btn:active,
+.ai-guided-action-btn:active {
+  background: #bfdbfe;
+  border-color: #60a5fa;
+  transform: translateY(1px);
 }
 
 /* Itinerary render in AI chat */

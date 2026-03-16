@@ -12,6 +12,12 @@ from addMustVisit import (
     init_add_must_visit,
     resolve_choice_from_text as _add_resolve_choice_from_text,
 )
+from removePOI import (
+    apply_choice_to_parsed as _remove_apply_choice_to_parsed,
+    enforce_remove_parse_rules as _remove_enforce_parse_rules,
+    execute_remove_poi as _execute_remove_poi,
+    resolve_choice_from_text as _remove_resolve_choice_from_text,
+)
 
 
 _CTX = {}
@@ -219,16 +225,7 @@ def _enforce_parse_clarification_rules(parsed, user_text):
             parsed["clarification_question"] = "Which target day do you want to move it to?"
 
     parsed = _add_enforce_parse_rules(parsed)
-
-    txt = (user_text or "").lower()
-    explicit_replace = bool(re.search(r"\b(replace|instead|swap|substitute)\b|换成|替换|改成|换一个", txt))
-    if intent == "remove_poi" and not explicit_replace and not parsed.get("needs_clarification"):
-        parsed["needs_clarification"] = True
-        parsed["clarification_type"] = "remove_or_replace"
-        parsed["clarification_options"] = ["remove_only", "replace_nearby_same_type"]
-        parsed["clarification_question"] = (
-            "Do you want to remove it only, or remove and replace it with a similar nearby POI?"
-        )
+    parsed = _remove_enforce_parse_rules(parsed, user_text)
     return parsed
 
 
@@ -245,11 +242,9 @@ def _resolve_choice_from_user_text(user_text, options, clarification_type=None):
     if add_choice:
         return add_choice
 
-    if clarification_type == "remove_or_replace":
-        if "replace" in txt and "replace_nearby_same_type" in opts:
-            return "replace_nearby_same_type"
-        if any(k in txt for k in ("remove", "delete", "skip")) and "remove_only" in opts:
-            return "remove_only"
+    remove_choice = _remove_resolve_choice_from_text(user_text, opts, clarification_type)
+    if remove_choice:
+        return remove_choice
 
     return None
 
@@ -262,11 +257,8 @@ def _apply_choice_to_parsed(parsed, choice, clarification_type=None):
     out["clarification_type"] = None
     out["clarification_options"] = None
 
-    if choice == "remove_only":
-        out["intent"] = "remove_poi"
-    elif choice == "replace_nearby_same_type":
-        out["intent"] = "replace_poi"
-        out["constraints"]["nearby"] = True
+    if choice in ("remove_only", "replace_nearby_same_type"):
+        out = _remove_apply_choice_to_parsed(out, choice)
     elif choice in ("add_direct", "replace_existing") or str(choice).startswith("day_") or clarification_type == "choose_replace_target_poi":
         out = _add_apply_choice_to_parsed(out, choice, clarification_type)
     return out
@@ -416,22 +408,6 @@ def _pick_existing_poi_for_replace(plan):
         if not (p or {}).get("is_must_visit"):
             return i, p
     return len(pois) - 1, pois[-1]
-
-
-def _remove_poi_from_plan(plan, poi_name):
-    pois = list(plan.get("pois") or [])
-    idx = _pick_poi_index_by_name(pois, poi_name)
-    if idx < 0:
-        return None
-    removed = pois.pop(idx)
-    optimize_route_greedy_tsp = _ctx("optimize_route_greedy_tsp")
-    get_poi_duration = _ctx("get_poi_duration")
-    if len(pois) >= 2:
-        pois = optimize_route_greedy_tsp(pois)
-    plan["pois"] = pois
-    plan["must_visit_count"] = sum(1 for p in pois if (p or {}).get("is_must_visit"))
-    plan["total_hours"] = round(sum(get_poi_duration(p or {}) for p in pois), 1)
-    return removed
 
 
 def _pop_poi_from_plan(plan, poi_name):
@@ -851,6 +827,8 @@ def register_change_poi_routes(app):
         persist_itinerary_if_missing = _ctx("persist_itinerary_if_missing")
         get_trip_days = _ctx("get_trip_days")
         format_itinerary_summary = _ctx("format_itinerary_summary")
+        optimize_route_greedy_tsp = _ctx("optimize_route_greedy_tsp")
+        get_poi_duration = _ctx("get_poi_duration")
 
         trip = db.session.get(Trip, trip_id)
         if not trip:
@@ -930,7 +908,7 @@ def register_change_poi_routes(app):
                 move_to_day = None
 
         source_plan = None
-        if intent != "add_poi":
+        if intent in ("replace_poi", "move_poi"):
             if day is not None:
                 source_plan = _find_day_plan(day_plans, day)
                 if not source_plan:
@@ -969,7 +947,41 @@ def register_change_poi_routes(app):
                         ),
                     )
 
-        if intent == "add_poi":
+        if intent == "remove_poi":
+            remove_result = _execute_remove_poi(
+                parsed=parsed,
+                poi_name=poi_name,
+                day=day,
+                day_plans=day_plans,
+                content=content,
+                trip=trip,
+                compute_candidates_and_itinerary=compute_candidates_and_itinerary,
+                find_day_plan=_find_day_plan,
+                pick_poi_match=_pick_poi_match,
+                optimize_route_greedy_tsp=optimize_route_greedy_tsp,
+                get_poi_duration=get_poi_duration,
+                refill_day_plan_from_pool=_refill_day_plan_from_pool,
+                poi_uid=_poi_uid,
+            )
+            if remove_result.get("kind") == "error":
+                return _resp_error(
+                    remove_result.get("message") or "Failed to remove POI",
+                    status=int(remove_result.get("status") or 400),
+                    parsed=parsed,
+                )
+            if remove_result.get("kind") == "clarify":
+                parsed = remove_result.get("parsed") or parsed
+                return _resp_clarify(
+                    trip_id,
+                    parsed,
+                    remove_result.get("question"),
+                    clarification_type=remove_result.get("clarification_type"),
+                    clarification_options=remove_result.get("clarification_options"),
+                )
+            removed = remove_result.get("removed")
+            applied_day = remove_result.get("applied_day")
+            added = list(remove_result.get("added") or [])
+        elif intent == "add_poi":
             add_result = _execute_add_must_visit(
                 parsed=parsed,
                 poi_name=poi_name,
@@ -1026,39 +1038,25 @@ def register_change_poi_routes(app):
             removed = moved
             applied_day = source_plan.get("day")
             added = [moved]
-        else:
-            removed = _remove_poi_from_plan(source_plan, poi_name)
-            applied_day = source_plan.get("day")
-
         if intent != "add_poi" and not removed:
             return _resp_error(f"POI not found in target day: {poi_name}", status=404)
 
-        if intent in ("remove_poi", "replace_poi"):
-            banned_uids = {_poi_uid(removed)} if isinstance(removed, dict) else set()
+        if intent == "replace_poi":
             pool = list(content.get("pois") or [])
             if not pool:
                 pref = trip.preference
                 generated = compute_candidates_and_itinerary(pref, limit=300) if pref else None
                 pool = list((generated or {}).get("out") or [])
-            if intent == "replace_poi":
-                rep = _replace_one_poi_in_plan(
-                    plan=source_plan,
-                    day_plans=day_plans,
-                    pool=pool,
-                    pref=trip.preference,
-                    removed_poi=removed,
-                    constraints=parsed.get("constraints") or {},
-                )
-                if rep:
-                    added = [rep]
-            else:
-                added = _refill_day_plan_from_pool(
-                    plan=source_plan,
-                    day_plans=day_plans,
-                    pool=pool,
-                    pref=trip.preference,
-                    banned_uids=banned_uids,
-                )
+            rep = _replace_one_poi_in_plan(
+                plan=source_plan,
+                day_plans=day_plans,
+                pool=pool,
+                pref=trip.preference,
+                removed_poi=removed,
+                constraints=parsed.get("constraints") or {},
+            )
+            if rep:
+                added = [rep]
 
         trip_days = get_trip_days(trip.preference) if trip.preference else len(day_plans)
         content["day_plans"] = day_plans
