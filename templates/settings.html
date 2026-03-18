@@ -204,8 +204,8 @@
   function renderSettingsPanel() {
     const user = getAuthUser();
     const isLoggedIn = !!user;
-    settingsUsernameView.value = isLoggedIn ? (user.username || '-') : '未登录';
-    settingsPasswordView.value = isLoggedIn ? '********' : '未登录';
+    settingsUsernameView.value = isLoggedIn ? (user.username || '-') : 'Please log in';
+    settingsPasswordView.value = isLoggedIn ? '********' : 'Please log in';
     settingsPrimaryBtn.textContent = isLoggedIn ? 'Edit' : 'Login';
   }
 

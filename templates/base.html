@@ -858,10 +858,7 @@
                         <h3>Hi, ${currentUser.username}</h3>
                     </div>
                     <div class="user-card-menu">
-                        <div class="user-card-item" id="userProfileBtn">
-                            <span class="material-symbols-outlined">person</span>
-                            <span>My profile</span>
-                        </div>
+                        
                         <div class="user-card-item" id="userLogoutBtn">
                             <span class="material-symbols-outlined">logout</span>
                             <span>Logout</span>
@@ -889,14 +886,6 @@
                 }
             });
             
-            // My profile 按钮（暂时不做任何事）
-            const profileBtn = card.querySelector('#userProfileBtn');
-            profileBtn.addEventListener('click', () => {
-                card.remove();
-                if (typeof window.openSettingsPanel === 'function') {
-                    window.openSettingsPanel();
-                }
-            });
             
             document.body.appendChild(card);
         }
