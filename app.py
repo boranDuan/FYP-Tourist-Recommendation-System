@@ -333,10 +333,10 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 
 # ========== 问卷校验 API ==========
-# Q4、Q7、Q12 为可选，1b 为可选，其余必填
+# Q3、Q4、Q7、Q10、Q12 为可选，1b 为可选，其余必填
 
 def validate_questionnaire_data(data):
-    """校验问卷必填项，返回 (is_valid, errors_list)。Q4、Q7、Q12 可选，1b 可选。"""
+    """校验问卷必填项，返回 (is_valid, errors_list)。Q3/Q4/Q7/Q10/Q12 可选，1b 可选。"""
     errors = []
     group_type = (data.get("group_type") or "").strip()
     num_people = data.get("num_people")
@@ -352,11 +352,9 @@ def validate_questionnaire_data(data):
 
     if not group_type:
         errors.append("Q1: Please select how you will be traveling.")
-    if budget_unit == "custom":
-        if not (budget_value and str(budget_value).strip()):
-            errors.append("Q3: Please enter your custom budget amount.")
-    elif not budget_unit:
-        errors.append("Q3: Please select your travel budget.")
+    # Q3 optional: only validate when user explicitly selects custom budget.
+    if budget_unit == "custom" and not (budget_value and str(budget_value).strip()):
+        errors.append("Q3: Please enter your custom budget amount.")
     if not visit_date:
         errors.append("Q2: Please select your visit start date.")
     else:
@@ -379,8 +377,7 @@ def validate_questionnaire_data(data):
         errors.append("Q9: Please select your preferred start time.")
     if start_time_unit == "custom" and not (start_time_value and str(start_time_value).strip()):
         errors.append("Q9: Please enter your custom start time.")
-    if not food_preference or len(food_preference) == 0:
-        errors.append("Q10: Please select at least one food type or specify in Other.")
+    # Q10 optional: no required validation.
 
     return (len(errors) == 0, errors)
 

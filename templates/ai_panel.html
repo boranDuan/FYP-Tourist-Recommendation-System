@@ -320,9 +320,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     );
   }
 
-  function _renderGuidedEditActions() {
+  function _renderGuidedEditActions(introText) {
+    const intro = String(introText || 'I can help you change your itinerary if you are not satisfied:');
     return (
-      '<div>I can help you change your itinerary if you are not satisfied:</div>' +
+      '<div>' + escapeHtml(intro) + '</div>' +
       '<div class="ai-edit-choice-row">' +
       '<button type="button" class="ai-guided-action-btn" data-guided-action="add_poi">Add a POI</button>' +
       '<button type="button" class="ai-guided-action-btn" data-guided-action="remove_poi">Remove a POI</button>' +
@@ -331,6 +332,19 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       '<button type="button" class="ai-guided-action-btn" data-guided-action="adjust_trip_days">Adjust trip days</button>' +
       '</div>'
     );
+  }
+
+  function _appendVersionFollowupMenu(version) {
+    const v = Number(version);
+    if (!(Number.isFinite(v) && v >= 2)) return;
+    const text = 'This is your Version ' + String(v) + '. If you still need changes, you can continue:';
+    const wrap = appendMessage('assistant', '', false, true);
+    setBubbleHtmlContent(wrap, _renderGuidedEditActions(text));
+    bindGuidedActionButtons(wrap);
+    chatHistory.push({ role: 'assistant', content: text });
+    if (Number.isFinite(activeTripId) && activeTripId > 0) {
+      _appendTripHistoryRecord(activeTripId, { type: 'text', role: 'assistant', content: text });
+    }
   }
 
   function _guidedActionPrompt(action) {
@@ -561,6 +575,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           content: prefix,
           day_plans: itineraryDayPlansState,
         });
+        _appendVersionFollowupMenu(applyData.new_version);
         return;
       }
       if (applyData && applyData.success && applyData.needs_clarification) {
@@ -1394,6 +1409,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
               prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): added ' + (addedNames[0] || parsed.poi_name || 'POI') + '.';
             } else if (actionIntent === 'move_poi') {
               prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): moved ' + removedName + '.' + addedText;
+            } else if (actionIntent === 'replace_poi') {
+              prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): swapped ' + removedName + '.' + addedText;
+            } else if (actionIntent === 'adjust_day_plans') {
+              prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): adjusted trip days.';
             } else {
               prefix = 'Updated itinerary (v' + String(applyData.new_version || '?') + '): removed ' + removedName + '.' + addedText;
             }
@@ -1410,6 +1429,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
               content: prefix,
               day_plans: itineraryDayPlansState,
             });
+            _appendVersionFollowupMenu(applyData.new_version);
             return;
           }
           if (applyData && applyData.success && applyData.needs_clarification) {
@@ -1699,6 +1719,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
                   day_plans: itineraryDayPlansState,
                 });
               }
+              _appendVersionFollowupMenu(applyData.new_version);
               return;
             }
             if (applyData && applyData.success && applyData.needs_clarification) {
@@ -1810,19 +1831,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     });
   }
 
-  // 问卷：Budget 单位选择 - Custom 时启用数字输入
-  function toggleBudgetInput(unitSelect, valueInput) {
-    if (!unitSelect || !valueInput) return;
-    const update = () => {
-      const isCustom = unitSelect.value === 'custom';
-      valueInput.disabled = !isCustom;
-      valueInput.placeholder = isCustom ? 'e.g., 80' : '—';
-      if (!isCustom) valueInput.value = '';
-    };
-    unitSelect.addEventListener('change', update);
-    update();
-  }
-  toggleBudgetInput(document.getElementById('q-budget-unit'), document.getElementById('q-budget-value'));
 
   // 问卷：Allergy 勾选时显示具体说明输入
   (function() {
@@ -1903,16 +1911,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const errEl = document.getElementById('q-form-error');
     const errors = [];
     const groupType = document.getElementById('q-group-type')?.value;
-    const budgetUnit = document.getElementById('q-budget-unit')?.value;
-    const budgetVal = document.getElementById('q-budget-value')?.value?.trim();
     const visitDate = document.getElementById('q-visit-date')?.value;
     const visitDateEnd = document.getElementById('q-visit-date-end')?.value;
     const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
     const pace = document.getElementById('q-pace')?.value;
     const startTimeUnit = document.getElementById('q-start-time-unit')?.value;
     const startTimeVal = document.getElementById('q-start-time-value')?.value;
-    const foodPref = document.querySelectorAll('input[name="food_preference"]:checked');
-    const foodOther = document.getElementById('q-food-preference-other')?.value?.trim();
 
     if (!groupType) errors.push('Q1: Please select how you will be traveling.');
     if (!visitDate) errors.push('Q2: Please select your visit start date.');
@@ -1921,11 +1925,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       if (visitDate < today) errors.push('Q2: Start date cannot be in the past.');
     }
     if (visitDate && visitDateEnd && visitDateEnd < visitDate) errors.push('Q2: End date cannot be earlier than start date.');
-    if (budgetUnit === 'custom' ? !budgetVal : !budgetUnit) errors.push('Q3: Please select or enter your travel budget.');
     if (interestsRankOrder.length === 0 && !interestsOther) errors.push('Q5: Please select at least one type of place or specify in Other.');
     if (!pace) errors.push('Q8: Please select your travel pace.');
     if (!startTimeUnit || (startTimeUnit === 'custom' && !startTimeVal)) errors.push('Q9: Please select or enter your preferred start time.');
-    if (foodPref.length === 0 && !foodOther) errors.push('Q10: Please select at least one food type or specify in Other.');
 
     if (errors.length > 0) {
       errEl.textContent = errors.join(' ');
