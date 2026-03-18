@@ -140,6 +140,45 @@ def get_user():
             return jsonify({'success': True, 'user': user.to_dict()}), 200
     return jsonify({'success': False, 'user': None}), 200
 
+
+@app.route("/api/user/update-profile", methods=["POST"])
+def update_user_profile():
+    """更新当前登录用户的用户名/密码"""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "message": "Please login first"}), 401
+
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    data = request.get_json() or {}
+    new_username = str(data.get("username") or "").strip()
+    new_password = str(data.get("password") or "").strip()
+
+    if not new_username and not new_password:
+        return jsonify({"success": False, "message": "Nothing to update"}), 400
+
+    if new_username:
+        existing = User.query.filter_by(username=new_username).first()
+        if existing and existing.id != user.id:
+            return jsonify({"success": False, "message": "Username already exists"}), 400
+
+    if new_password and len(new_password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters"}), 400
+
+    try:
+        if new_username:
+            user.username = new_username
+            session["username"] = new_username
+        if new_password:
+            user.set_password(new_password)
+        db.session.commit()
+        return jsonify({"success": True, "message": "Profile updated", "user": user.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": "Failed to update profile: " + str(e)}), 500
+
 @app.route("/api/guest", methods=["POST"])
 def guest_mode():
     """访客模式"""

@@ -380,7 +380,6 @@
         <div class="item" data-label="AI Recommend"><span class="material-symbols-outlined icon">chat</span> <span class="label">AI Recommend</span><span class="label-tooltip">AI Recommendation</span></div>
         <div class="item" data-label="My Trip"><span class="material-symbols-outlined icon">trip</span> <span class="label">My Trip</span><span class="label-tooltip">My Trip</span></div>
         <div class="item" data-label="My Favorite"><span class="material-symbols-outlined icon">map_pin_heart</span> <span class="label">My Favorite</span><span class="label-tooltip">My Favorite</span></div>
-        <div class="item" data-label="Connect"><span class="material-symbols-outlined icon">mail</span> <span class="label">Connect</span><span class="label-tooltip">Connect</span></div>
         <div class="item" data-label="Settings"><span class="material-symbols-outlined icon">settings</span> <span class="label">Settings</span><span class="label-tooltip">Settings</span></div>
         <div class="item login-item" data-label="Login"><span class="material-symbols-outlined icon">account_box</span> <span class="label">Login</span><span class="label-tooltip">Login</span></div>
     </div>
@@ -565,6 +564,7 @@
                     document.body.classList.remove('show-favorites');
                     document.body.classList.remove('show-my-trips');
                     document.body.classList.remove('show-ai-panel');
+                    document.body.classList.remove('show-settings');
                 }
                 
                 const collapseBtn = document.getElementById('collapseBtn');
@@ -589,6 +589,7 @@
                     document.body.classList.remove('collapsed');
                     document.body.classList.remove('show-my-trips');
                     document.body.classList.remove('show-ai-panel');
+                    document.body.classList.remove('show-settings');
                     // 加载收藏列表
                     if (typeof loadFavorites === 'function') {
                         loadFavorites();
@@ -616,6 +617,7 @@
                     document.body.classList.remove('collapsed');
                     document.body.classList.remove('show-favorites');
                     document.body.classList.remove('show-ai-panel');
+                    document.body.classList.remove('show-settings');
                     if (typeof loadMyTrips === 'function') {
                         loadMyTrips();
                     }
@@ -642,6 +644,7 @@
                     document.body.classList.remove('collapsed');
                     document.body.classList.remove('show-favorites');
                     document.body.classList.remove('show-my-trips');
+                    document.body.classList.remove('show-settings');
                 }
                 
                 const collapseBtn = document.getElementById('collapseBtn');
@@ -650,7 +653,7 @@
                 }
             });
         }
-        
+
         // ========== 登录注册功能 ==========
         const loginModal = document.getElementById('loginModal');
         const registerModal = document.getElementById('registerModal');
@@ -663,9 +666,30 @@
         const registerForm = document.getElementById('registerForm');
         const guestModeLogin = document.getElementById('guestModeLogin');
         const guestModeRegister = document.getElementById('guestModeRegister');
+
+        function resetLoginFormState() {
+            if (loginForm) loginForm.reset();
+            clearErrors('login');
+            const submitBtn = document.getElementById('loginSubmit');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Login';
+            }
+        }
+
+        function resetRegisterFormState() {
+            if (registerForm) registerForm.reset();
+            clearErrors('register');
+            const submitBtn = document.getElementById('registerSubmit');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Register';
+            }
+        }
         
         // 打开登录窗口
         function openLoginModal() {
+            resetLoginFormState();
             loginModal.classList.add('active');
             document.body.style.overflow = 'hidden';
         }
@@ -674,11 +698,12 @@
         function closeLoginModalFunc() {
             loginModal.classList.remove('active');
             document.body.style.overflow = '';
-            clearErrors('login');
+            resetLoginFormState();
         }
         
         // 打开注册窗口
         function openRegisterModal() {
+            resetRegisterFormState();
             registerModal.classList.add('active');
             document.body.style.overflow = 'hidden';
         }
@@ -687,7 +712,7 @@
         function closeRegisterModalFunc() {
             registerModal.classList.remove('active');
             document.body.style.overflow = '';
-            clearErrors('register');
+            resetRegisterFormState();
         }
         
         // 清除错误信息
@@ -710,6 +735,12 @@
         
         // 用户状态管理
         let currentUser = null;
+
+        function notifyAuthStateChanged() {
+            window.dispatchEvent(new CustomEvent('trs-auth-state-changed', {
+                detail: { user: currentUser }
+            }));
+        }
         
         // 检查用户登录状态
         async function checkUserStatus() {
@@ -771,6 +802,25 @@
             }
         }
         
+        async function performLogout() {
+            const response = await fetch('/api/logout', { method: 'POST' });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.message || 'Logout failed');
+            }
+            currentUser = null;
+            updateLoginUI(false);
+            if (typeof loadFavorites === 'function') {
+                const favoritesContainer = document.getElementById('favorites-container');
+                if (favoritesContainer) {
+                    favoritesContainer.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
+                }
+            }
+            if (typeof refreshFavoriteButtonStatus === 'function') {
+                refreshFavoriteButtonStatus();
+            }
+        }
+
         // 更新登录 UI
         function updateLoginUI(isLoggedIn) {
             if (isLoggedIn && currentUser) {
@@ -786,7 +836,14 @@
                     loginLabel.textContent = 'Login';
                 }
             }
+            notifyAuthStateChanged();
         }
+
+        // Expose auth helpers for external panels.
+        window.openLoginModal = openLoginModal;
+        window.refreshUserStatus = checkUserStatus;
+        window.performLogout = performLogout;
+        window.getCurrentUser = () => currentUser;
         
         // 显示用户卡片
         function showUserCard() {
@@ -824,41 +881,21 @@
             const logoutBtn = card.querySelector('#userLogoutBtn');
             logoutBtn.addEventListener('click', async () => {
                 try {
-                    const response = await fetch('/api/logout', {
-                        method: 'POST'
-                    });
-                    const data = await response.json();
-                    if (data.success) {
-                        currentUser = null;
-                        updateLoginUI(false);
-                        card.remove();
-                        // 更新为游客状态，不需要刷新页面
-                        // 可以在这里清除收藏面板等需要登录的功能
-                        if (typeof loadFavorites === 'function') {
-                            // 如果收藏面板正在显示，清空它
-                            const favoritesContainer = document.getElementById('favorites-container');
-                            if (favoritesContainer) {
-                                favoritesContainer.innerHTML = '<div class="favorites-empty">Please login to view your favorites</div>';
-                            }
-                        }
-                        // 重新检查当前显示的地点详情卡片的收藏状态（从localStorage检查）
-                        if (typeof refreshFavoriteButtonStatus === 'function') {
-                            refreshFavoriteButtonStatus();
-                        }
-                    } else {
-                        alert('Logout failed: ' + data.message);
-                    }
+                    await performLogout();
+                    card.remove();
                 } catch (error) {
                     console.error('Logout error:', error);
-                    alert('Logout failed. Please try again.');
+                    alert((error && error.message) || 'Logout failed. Please try again.');
                 }
             });
             
             // My profile 按钮（暂时不做任何事）
             const profileBtn = card.querySelector('#userProfileBtn');
             profileBtn.addEventListener('click', () => {
-                // TODO: 实现 My profile 功能
                 card.remove();
+                if (typeof window.openSettingsPanel === 'function') {
+                    window.openSettingsPanel();
+                }
             });
             
             document.body.appendChild(card);
@@ -882,7 +919,7 @@
         
         // 页面加载时检查登录状态
         checkUserStatus();
-        
+
         // 关闭按钮
         closeLoginModal.addEventListener('click', closeLoginModalFunc);
         closeRegisterModal.addEventListener('click', closeRegisterModalFunc);
@@ -902,16 +939,16 @@
         // 切换窗口
         showRegisterModal.addEventListener('click', (e) => {
             e.preventDefault();
-            clearErrors('login');
+            resetLoginFormState();
             loginModal.classList.remove('active');
-            registerModal.classList.add('active');
+            openRegisterModal();
         });
         
         showLoginModal.addEventListener('click', (e) => {
             e.preventDefault();
-            clearErrors('register');
+            resetRegisterFormState();
             registerModal.classList.remove('active');
-            loginModal.classList.add('active');
+            openLoginModal();
         });
         
         // 登录表单提交

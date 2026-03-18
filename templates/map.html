@@ -3,6 +3,7 @@
 {% from "favorite_panel.html" import favorite_panel_styles, favorite_panel_html, favorite_panel_js %}
 {% from "ai_panel.html" import ai_panel_styles, ai_panel_html, ai_panel_js %}
 {% from "my_trip_panel.html" import my_trip_panel_styles, my_trip_panel_html, my_trip_panel_js %}
+{% from "settings.html" import settings_panel_styles, settings_panel_html, settings_panel_js %}
 
 {% block title %}Dublin Map{% endblock %}
 
@@ -101,7 +102,8 @@
 
   .show-favorites #map,
   .show-my-trips #map,
-  .show-ai-panel #map {
+  .show-ai-panel #map,
+  .show-settings #map {
     left: 50%;
     right: 0;
     width: 50%;
@@ -111,18 +113,19 @@
   .collapsed .collapse-btn,
   .show-favorites .collapse-btn,
   .show-my-trips .collapse-btn,
-  .show-ai-panel .collapse-btn {
+  .show-ai-panel .collapse-btn,
+  .show-settings .collapse-btn {
     left: calc(50% + 10px);
     transform: translateX(-50%);
   }
 
   /* 仅当没有任何侧栏打开时，按钮在地图左上角 */
-  body:not(.collapsed):not(.show-favorites):not(.show-my-trips):not(.show-ai-panel) .collapse-btn {
+  body:not(.collapsed):not(.show-favorites):not(.show-my-trips):not(.show-ai-panel):not(.show-settings) .collapse-btn {
     left: 20px;
     right: auto;
   }
 
-  body:not(.collapsed):not(.show-favorites):not(.show-my-trips):not(.show-ai-panel) .content.expanded .collapse-btn {
+  body:not(.collapsed):not(.show-favorites):not(.show-my-trips):not(.show-ai-panel):not(.show-settings) .content.expanded .collapse-btn {
     left: 20px;
   }
 </style>
@@ -130,6 +133,7 @@
 {{ favorite_panel_styles() }}
 {{ my_trip_panel_styles() }}
 {{ ai_panel_styles() }}
+{{ settings_panel_styles() }}
 {% endblock %}
 
 {% block content %}
@@ -140,6 +144,7 @@
 {{ favorite_panel_html() }}
 {{ my_trip_panel_html() }}
 {{ ai_panel_html() }}
+{{ settings_panel_html() }}
 
 
 <div class="weather-menu" id="weatherMenu">
@@ -404,9 +409,10 @@ function initMap(){
       body.classList.contains("collapsed") ||
       body.classList.contains("show-favorites") ||
       body.classList.contains("show-my-trips") ||
-      body.classList.contains("show-ai-panel");
+      body.classList.contains("show-ai-panel") ||
+      body.classList.contains("show-settings");
     if (anyPanelOpen) {
-      body.classList.remove("collapsed", "show-favorites", "show-my-trips", "show-ai-panel");
+      body.classList.remove("collapsed", "show-favorites", "show-my-trips", "show-ai-panel", "show-settings");
       btn.textContent = "→";
     } else {
       body.classList.add("collapsed");
@@ -596,6 +602,7 @@ function openSearchPanelFromMap() {
   document.body.classList.remove('show-favorites');
   document.body.classList.remove('show-my-trips');
   document.body.classList.remove('show-ai-panel');
+  document.body.classList.remove('show-settings');
   const collapseBtn = document.getElementById('collapseBtn');
   if (collapseBtn) collapseBtn.textContent = '←';
 }
@@ -822,4 +829,5 @@ function clearWeather(){
   activeLayer=null;
 }
 </script>
+{{ settings_panel_js() }}
 {% endblock %}

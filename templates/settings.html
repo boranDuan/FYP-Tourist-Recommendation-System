@@ -1,0 +1,325 @@
+{% macro settings_panel_styles() %}
+<style>
+  #settings-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100vh;
+    background: #f8f9fa;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    padding: 20px 24px;
+    box-sizing: border-box;
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.6s ease, opacity 0.3s ease;
+    z-index: 900;
+    overflow: auto;
+  }
+  body.show-settings #settings-panel {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .settings-panel-inner {
+    max-width: 860px;
+  }
+  .settings-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .settings-head h2 {
+    margin: 0;
+    font-size: 24px;
+  }
+  .settings-close {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-size: 26px;
+    color: #666;
+  }
+  .settings-section {
+    margin-top: 16px;
+  }
+  .settings-section h3 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .settings-row:last-child {
+    margin-bottom: 0;
+  }
+  .settings-row label {
+    color: #444;
+    font-weight: 500;
+  }
+  .settings-readonly {
+    width: min(260px, 58vw);
+    border: 1px solid #ddd;
+    background: #f0f0f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #555;
+  }
+  .settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+  .settings-btn {
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .settings-btn-primary {
+    background: #2563eb;
+    color: #fff;
+  }
+  .settings-btn-primary:hover {
+    background: #1d4ed8;
+  }
+  .settings-btn-secondary {
+    background: #e5e7eb;
+    color: #333;
+  }
+  .settings-btn-secondary:hover {
+    background: #d1d5db;
+  }
+  .settings-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+  }
+</style>
+{% endmacro %}
+
+{% macro settings_panel_html() %}
+<div id="settings-panel">
+  <div class="settings-panel-inner">
+    <div class="settings-head">
+      <h2>Settings</h2>
+      <button type="button" class="settings-close" id="settingsCloseBtn">&times;</button>
+    </div>
+
+    <div class="settings-section">
+      <h3>Profile</h3>
+      <div class="settings-row">
+        <label>Username</label>
+        <input type="text" id="settingsUsernameView" class="settings-readonly" readonly>
+      </div>
+      <div class="settings-row">
+        <label>Password</label>
+        <input type="text" id="settingsPasswordView" class="settings-readonly" readonly>
+      </div>
+      <div class="settings-actions">
+        <button type="button" class="settings-btn settings-btn-primary" id="settingsPrimaryBtn">Edit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editProfileModal">
+  <div class="modal">
+    <button class="modal-close" id="closeEditProfileModal">&times;</button>
+    <h2 class="modal-title">Edit Profile</h2>
+    <form id="editProfileForm">
+      <div class="form-group">
+        <label class="form-label" for="editUsername">Username</label>
+        <input type="text" id="editUsername" class="form-input" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="editPassword">Password</label>
+        <input type="password" id="editPassword" class="form-input" placeholder="Leave blank to keep current password">
+      </div>
+      <div class="settings-edit-actions">
+        <button type="button" class="settings-btn settings-btn-secondary" id="editProfileCancelBtn">Cancel</button>
+        <button type="submit" class="settings-btn settings-btn-primary" id="editProfileSaveBtn">Save</button>
+      </div>
+      <div class="error-message" id="editProfileError"></div>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro settings_panel_js() %}
+<script>
+(function() {
+  const settingsItem = document.querySelector('.sidebar .item[data-label="Settings"]');
+  const settingsPanel = document.getElementById('settings-panel');
+  const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  const settingsUsernameView = document.getElementById('settingsUsernameView');
+  const settingsPasswordView = document.getElementById('settingsPasswordView');
+  const settingsPrimaryBtn = document.getElementById('settingsPrimaryBtn');
+
+  const editProfileModal = document.getElementById('editProfileModal');
+  const editProfileForm = document.getElementById('editProfileForm');
+  const closeEditProfileModal = document.getElementById('closeEditProfileModal');
+  const editProfileCancelBtn = document.getElementById('editProfileCancelBtn');
+  const editProfileSaveBtn = document.getElementById('editProfileSaveBtn');
+  const editProfileError = document.getElementById('editProfileError');
+  const editUsernameInput = document.getElementById('editUsername');
+  const editPasswordInput = document.getElementById('editPassword');
+  const loginItem = document.querySelector('.sidebar .item.login-item');
+
+  let settingsUser = null;
+
+  function getAuthUser() {
+    if (typeof window.getCurrentUser === 'function') {
+      return window.getCurrentUser();
+    }
+    return settingsUser;
+  }
+
+  async function fetchCurrentUser() {
+    if (typeof window.refreshUserStatus === 'function') {
+      await window.refreshUserStatus();
+      settingsUser = getAuthUser();
+      renderSettingsPanel();
+      return;
+    }
+    try {
+      const response = await fetch('/api/user');
+      const data = await response.json();
+      settingsUser = (data && data.success && data.user) ? data.user : null;
+    } catch (_) {
+      settingsUser = null;
+    }
+    renderSettingsPanel();
+  }
+
+  function renderSettingsPanel() {
+    const user = getAuthUser();
+    const isLoggedIn = !!user;
+    settingsUsernameView.value = isLoggedIn ? (user.username || '-') : '未登录';
+    settingsPasswordView.value = isLoggedIn ? '********' : '未登录';
+    settingsPrimaryBtn.textContent = isLoggedIn ? 'Edit' : 'Login';
+  }
+
+  async function openSettingsPanel() {
+    document.body.classList.add('show-settings');
+    document.body.classList.remove('collapsed', 'show-favorites', 'show-my-trips', 'show-ai-panel');
+    const collapseBtn = document.getElementById('collapseBtn');
+    if (collapseBtn) collapseBtn.textContent = '←';
+    await fetchCurrentUser();
+  }
+
+  function closeSettingsPanel() {
+    document.body.classList.remove('show-settings');
+    const collapseBtn = document.getElementById('collapseBtn');
+    if (collapseBtn) collapseBtn.textContent = '→';
+  }
+
+  function closeEditProfileModalFunc() {
+    editProfileModal.classList.remove('active');
+    editProfileError.classList.remove('show');
+    editProfileError.textContent = '';
+    editPasswordInput.value = '';
+  }
+
+  if (settingsItem) {
+    settingsItem.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (document.body.classList.contains('show-settings')) closeSettingsPanel();
+      else await openSettingsPanel();
+    });
+  }
+  if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', closeSettingsPanel);
+  if (settingsPanel) settingsPanel.addEventListener('click', (e) => e.stopPropagation());
+
+  if (settingsPrimaryBtn) {
+    settingsPrimaryBtn.addEventListener('click', () => {
+      const user = getAuthUser();
+      if (!user) {
+        closeSettingsPanel();
+        if (typeof window.openLoginModal === 'function') {
+          window.openLoginModal();
+        } else if (loginItem) {
+          loginItem.click();
+        }
+        return;
+      }
+      editProfileError.classList.remove('show');
+      editProfileError.textContent = '';
+      editUsernameInput.value = user.username || '';
+      editPasswordInput.value = '';
+      editProfileModal.classList.add('active');
+    });
+  }
+
+  if (closeEditProfileModal) closeEditProfileModal.addEventListener('click', closeEditProfileModalFunc);
+  if (editProfileCancelBtn) editProfileCancelBtn.addEventListener('click', closeEditProfileModalFunc);
+  if (editProfileModal) {
+    editProfileModal.addEventListener('click', (e) => {
+      if (e.target === editProfileModal) closeEditProfileModalFunc();
+    });
+  }
+
+  if (editProfileForm) {
+    editProfileForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!getAuthUser()) return;
+      const username = (editUsernameInput.value || '').trim();
+      const password = (editPasswordInput.value || '').trim();
+      if (!username) {
+        editProfileError.textContent = 'Username is required';
+        editProfileError.classList.add('show');
+        return;
+      }
+      if (password && password.length < 6) {
+        editProfileError.textContent = 'Password must be at least 6 characters';
+        editProfileError.classList.add('show');
+        return;
+      }
+      editProfileSaveBtn.disabled = true;
+      editProfileSaveBtn.textContent = 'Saving...';
+      try {
+        const response = await fetch('/api/user/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await response.json();
+        if (!data.success) {
+          editProfileError.textContent = data.message || 'Failed to update profile';
+          editProfileError.classList.add('show');
+        } else {
+          settingsUser = data.user || settingsUser;
+          if (typeof window.refreshUserStatus === 'function') {
+            await window.refreshUserStatus();
+          }
+          renderSettingsPanel();
+          closeEditProfileModalFunc();
+        }
+      } catch (_) {
+        editProfileError.textContent = 'Network error. Please try again.';
+        editProfileError.classList.add('show');
+      } finally {
+        editProfileSaveBtn.disabled = false;
+        editProfileSaveBtn.textContent = 'Save';
+      }
+    });
+  }
+
+  window.addEventListener('trs-auth-state-changed', () => {
+    settingsUser = getAuthUser();
+    renderSettingsPanel();
+  });
+
+  window.openSettingsPanel = openSettingsPanel;
+})();
+</script>
+{% endmacro %}
