@@ -1581,6 +1581,42 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     if (overlay) overlay.classList.remove('visible');
   }
 
+  let _renderInterestsRank = null;
+  function resetQuestionnaireForm() {
+    const form = document.getElementById('ai-questionnaire-form');
+    if (form) form.reset();
+
+    interestsRankOrder = [];
+    if (typeof _renderInterestsRank === 'function') _renderInterestsRank();
+
+    const field1b = document.getElementById('q-field-1b');
+    if (field1b) field1b.style.display = 'none';
+    const numChildren = document.getElementById('q-num-children');
+    const numSeniors = document.getElementById('q-num-seniors');
+    if (numChildren) numChildren.value = 0;
+    if (numSeniors) numSeniors.value = 0;
+
+    const allergyDetail = document.getElementById('q-dietary-allergy-detail');
+    if (allergyDetail) {
+      allergyDetail.style.display = 'none';
+      allergyDetail.value = '';
+    }
+
+    const startTimeUnit = document.getElementById('q-start-time-unit');
+    const startTimeValue = document.getElementById('q-start-time-value');
+    if (startTimeUnit && startTimeValue) {
+      const isCustom = startTimeUnit.value === 'custom';
+      startTimeValue.disabled = !isCustom;
+      if (!isCustom) startTimeValue.value = '';
+    }
+
+    const errEl = document.getElementById('q-form-error');
+    if (errEl) {
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+    }
+  }
+
   const overlay = document.getElementById('ai-questionnaire-overlay');
   const closeBtn = document.getElementById('aiQuestionnaireClose');
   if (closeBtn) closeBtn.addEventListener('click', closeQuestionnaire);
@@ -1811,6 +1847,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         window.setItineraryDayPlans([], 1);
       }
 
+      resetQuestionnaireForm();
       appendMessage('assistant', 'Starting a new trip. Please fill out the questionnaire to create a fresh itinerary.');
       chatHistory.push({ role: 'assistant', content: 'Starting a new trip.' });
       openQuestionnaire();
@@ -1903,6 +1940,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         container.appendChild(el);
       });
     }
+    _renderInterestsRank = render;
     render();
   })();
 
