@@ -150,6 +150,7 @@
   let guestCandidatePoolState = [];
   let localPreviewVersion = 1;
   let versionDisplayOffset = 0;
+  let latestVersionMenuId = null;
   const poiOpenTimeCache = new Map();
   const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
   const GUEST_PENDING_TRIP_KEY = 'trs_guest_pending_trip_questionnaire_v1';
@@ -554,6 +555,48 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     return 1;
   }
 
+  function _editMenuHintText() {
+    const v = _currentDisplayVersionForFollowup();
+    if (Number.isFinite(v) && v >= 1) {
+      return 'If you want to modify the itinerary, please click the menu panel after Version ' + String(v) + '.';
+    }
+    return 'If you want to modify the itinerary, please click the menu panel.';
+  }
+
+  function _simplifyNormalChatReply(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return '';
+    // Split by newlines to preserve model list structure.
+    const lines = raw.split('\n').map(line => line.trim()).filter(Boolean);
+    // Filter out question lines so AI does not ask complex follow-ups.
+    const safeLines = lines.filter(line => !/\?$/.test(line));
+    // Keep plain text lines; HTML conversion happens at render stage.
+    return safeLines.join('\n');
+  }
+
+  function _renderReplyWithEditHint(replyText, menuId) {
+    const normalized = String(replyText || '')
+      .split('\n')
+      .map(line => {
+        const s = String(line || '').trim();
+        if (!s) return '';
+        if (s.startsWith('- ')) return '• ' + s.slice(2).trim();
+        return s;
+      })
+      .filter(Boolean)
+      .join('\n');
+    const safeReply = escapeHtml(normalized).replace(/\n/g, '<br>');
+    const hint = escapeHtml(_editMenuHintText());
+    const target = escapeHtml(String(menuId || ''));
+    if (!target) return safeReply + '<br><br>' + hint;
+    return (
+      safeReply +
+      '<br><br>' +
+      '<span>' + hint + ' </span>' +
+      '<button type="button" class="ai-guided-action-btn ai-jump-version-menu-btn" data-target-menu-id="' + target + '">Jump to Version menu</button>'
+    );
+  }
+
   function _appendVersionFollowupMenu(version, options) {
     const v = Number(version);
     const hideVersion = !!(options && options.hideVersion);
@@ -563,6 +606,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       ? 'If you still need changes, you can continue:'
       : ('This is your Version ' + String(v) + '. If you still need changes, you can continue:');
     const menuId = _newMenuId();
+    latestVersionMenuId = menuId;
     const wrap = appendMessage('assistant', '', false, true);
     wrap.dataset.menuId = menuId;
     wrap.dataset.menuInteractive = '1';
@@ -1845,6 +1889,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       }
     });
     const lastMenuId = menuOrder.length ? menuOrder[menuOrder.length - 1] : null;
+    latestVersionMenuId = lastMenuId || null;
     if (history.length > 0) {
       messagesEl.innerHTML = '';
       chatHistory = [];
@@ -2053,7 +2098,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
     let outbound = raw;
     let guidedParsed = null;
-    if (((Number.isFinite(activeTripId) && activeTripId > 0) || (Array.isArray(itineraryDayPlansState) && itineraryDayPlansState.length > 0)) && guidedEditAction) {
+    const hasActiveTrip = Number.isFinite(activeTripId) && activeTripId > 0;
+    const hadGuidedAction = (((Number.isFinite(activeTripId) && activeTripId > 0) || (Array.isArray(itineraryDayPlansState) && itineraryDayPlansState.length > 0)) && !!guidedEditAction);
+    if (hadGuidedAction) {
       const action = guidedEditAction;
       guidedEditAction = null;
       if (action === 'add_poi_custom') outbound = 'add ' + raw + ' to itinerary';
@@ -2093,8 +2140,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const placeholderWrap = appendMessage('assistant', '', true);
 
     try {
-      // 若已有当前 trip，优先走“解析->执行”编辑链路（会创建新版本并刷新地图/卡片）
-      if (Number.isFinite(activeTripId) && activeTripId > 0) {
+      // Only enter edit flow when user selected an edit action from Version menu.
+      if (hasActiveTrip && hadGuidedAction) {
         if (guidedParsed) {
           await _applyParsedEditFromGuided(guidedParsed, placeholderWrap);
           return;
@@ -2213,9 +2260,20 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       const data = await res.json();
 
       if (data.success && data.reply) {
-        setBubbleContent(placeholderWrap, data.reply);
-        chatHistory.push({ role: 'assistant', content: data.reply });
-        _appendConversationText('assistant', data.reply);
+        let replyText = data.reply;
+        if (hasActiveTrip) {
+          replyText = _simplifyNormalChatReply(replyText);
+          const hintText = _editMenuHintText();
+          const savedText = String(replyText || '').trim() + '\n\n' + hintText;
+          const html = _renderReplyWithEditHint(replyText, latestVersionMenuId);
+          setBubbleHtmlContent(placeholderWrap, html);
+          chatHistory.push({ role: 'assistant', content: savedText });
+          _appendConversationText('assistant', savedText);
+        } else {
+          setBubbleContent(placeholderWrap, replyText);
+          chatHistory.push({ role: 'assistant', content: replyText });
+          _appendConversationText('assistant', replyText);
+        }
       } else {
         setBubbleContent(placeholderWrap, 'Sorry, something went wrong. ' + (data.message || ''));
       }
@@ -2225,6 +2283,21 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   }
 
   sendBtn.addEventListener('click', sendMessage);
+  messagesEl.addEventListener('click', function(e) {
+    const btn = e.target.closest('.ai-jump-version-menu-btn');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const targetMenuId = String(btn.dataset.targetMenuId || '').trim();
+    if (!targetMenuId || !latestVersionMenuId || targetMenuId !== latestVersionMenuId) {
+      btn.disabled = true;
+      btn.textContent = 'Version menu is outdated';
+      return;
+    }
+    const targetWrap = messagesEl.querySelector('[data-menu-id="' + targetMenuId + '"]');
+    if (!targetWrap) return;
+    targetWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
   inputEl.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -2257,6 +2330,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       guestCandidatePoolState = [];
       localPreviewVersion = 1;
       versionDisplayOffset = 0;
+      latestVersionMenuId = null;
       guestTripHistory = [];
       _clearGuestPendingTripQuestionnaire();
       guidedEditAction = null;

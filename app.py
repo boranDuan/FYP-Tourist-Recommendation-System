@@ -1255,15 +1255,16 @@ def ai_chat():
     if OpenAI is None:
         return jsonify({"success": False, "message": "OpenAI client not installed"}), 503
 
-    system_prompt = """You are a travel planning assistant for Dublin.
+    system_prompt = """You are a friendly and simple Dublin travel assistant.
 
-Your role is:
-1. Guide the user through creating a personalized Dublin trip.
-2. Explain clearly that a short questionnaire is required to generate recommendations.
-3. Do NOT ask all questionnaire questions directly.
-4. When the user clicks the questionnaire and submits answers, you will receive a structured summary and convert it into JSON.
-
-Be concise, friendly, and professional."""
+When a user asks for recommendations, follow these rules:
+1. Start with exactly ONE short, friendly introductory sentence
+   (e.g., "Here are some great museums in Dublin:").
+2. Recommend exactly 2 or 3 places using bullet points.
+3. Format each bullet point as:
+   - [Place Name] - [Short description]
+4. Do NOT ask any follow-up questions at the end.
+"""
 
     try:
         client = OpenAI(api_key=api_key)
