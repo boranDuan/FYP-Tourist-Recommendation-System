@@ -597,6 +597,19 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     );
   }
 
+  function _splitEditHintFromAssistantText(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return { body: '', hasHint: false };
+    const lines = raw.split('\n').map(s => String(s || '').trim());
+    const nonEmpty = lines.filter(Boolean);
+    if (!nonEmpty.length) return { body: '', hasHint: false };
+    const last = nonEmpty[nonEmpty.length - 1];
+    const hasHint = /^If you want to modify the itinerary, please click the menu panel/i.test(last);
+    if (!hasHint) return { body: raw, hasHint: false };
+    const body = nonEmpty.slice(0, -1).join('\n').trim();
+    return { body, hasHint: true };
+  }
+
   function _appendVersionFollowupMenu(version, options) {
     const v = Number(version);
     const hideVersion = !!(options && options.hideVersion);
@@ -1773,6 +1786,19 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       }
     }
 
+    function clearActiveDay() {
+      layoutEl.dataset.activeDay = '';
+      window.__pendingItineraryCurrentDay = null;
+      layoutEl.querySelectorAll('.ai-itinerary-day').forEach(el => {
+        el.classList.remove('ai-itinerary-day-active');
+      });
+      if (typeof window.clearCurrentItineraryDayProjection === 'function') {
+        window.clearCurrentItineraryDayProjection();
+      } else if (typeof window.setCurrentItineraryDay === 'function') {
+        window.setCurrentItineraryDay(null);
+      }
+    }
+
     wrap.querySelectorAll('.ai-itinerary-day').forEach(dayEl => {
       dayEl.addEventListener('click', function(e) {
         // 点 POI 文字按钮时保持“跳转 Search panel”；其余区域（含 Day 标题）切换当天路线
@@ -1791,7 +1817,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         void this.offsetWidth;
         this.classList.add('ai-ripple-active');
         setTimeout(() => this.classList.remove('ai-ripple-active'), 820);
-        setActiveDay(this.dataset.day);
+        const clickedDay = Number(this.dataset.day);
+        const activeDay = Number(layoutEl.dataset.activeDay);
+        if (Number.isFinite(activeDay) && Number.isFinite(clickedDay) && activeDay === clickedDay) {
+          clearActiveDay();
+          return;
+        }
+        setActiveDay(clickedDay);
       });
     });
 
@@ -1893,6 +1925,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     if (history.length > 0) {
       messagesEl.innerHTML = '';
       chatHistory = [];
+      let replayCurrentMenuId = null;
       history.forEach((rec, idx) => {
         if (!rec || typeof rec !== 'object') return;
         if (rec.type === 'version_menu' || (rec.type === 'text' && rec.role === 'assistant' && _isVersionFollowupText(rec.content || ''))) {
@@ -1905,6 +1938,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           menuWrap.dataset.menuInteractive = isInteractive ? '1' : '0';
           setBubbleHtmlContent(menuWrap, _renderGuidedEditActions(content));
           bindGuidedActionButtons(menuWrap);
+          replayCurrentMenuId = menuId;
           if (!isInteractive) {
             _lockChoiceButtons(menuWrap, '.ai-guided-action-btn');
             if (selected) {
@@ -1921,7 +1955,17 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         } else if (rec.type === 'text') {
           const role = rec.role || 'assistant';
           const content = rec.content || '';
-          appendMessage(role, content, false, false);
+          if (role === 'assistant') {
+            const parsed = _splitEditHintFromAssistantText(content);
+            if (parsed.hasHint) {
+              const html = _renderReplyWithEditHint(parsed.body, replayCurrentMenuId || latestVersionMenuId || '');
+              appendMessage(role, html, false, true);
+            } else {
+              appendMessage(role, content, false, false);
+            }
+          } else {
+            appendMessage(role, content, false, false);
+          }
           if ((rec.role === 'user' || rec.role === 'assistant') && rec.content) {
             chatHistory.push({ role: rec.role, content: rec.content });
           }
@@ -2290,8 +2334,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     e.stopPropagation();
     const targetMenuId = String(btn.dataset.targetMenuId || '').trim();
     if (!targetMenuId || !latestVersionMenuId || targetMenuId !== latestVersionMenuId) {
-      btn.disabled = true;
-      btn.textContent = 'Version menu is outdated';
+      // Keep old jump button style visible, but prevent outdated jump action.
       return;
     }
     const targetWrap = messagesEl.querySelector('[data-menu-id="' + targetMenuId + '"]');

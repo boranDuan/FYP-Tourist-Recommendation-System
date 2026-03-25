@@ -792,12 +792,24 @@ function setItineraryDayPlans(dayPlans, dayNum) {
 }
 
 function setCurrentItineraryDay(dayNum) {
-  currentDay = Number(dayNum) || 1;
+  const nextDay = Number(dayNum);
+  if (!Number.isFinite(nextDay) || nextDay <= 0) {
+    currentDay = null;
+    clearItineraryProjection();
+    return;
+  }
+  currentDay = nextDay;
   renderCurrentDayProjection();
+}
+
+function clearCurrentItineraryDayProjection() {
+  currentDay = null;
+  clearItineraryProjection();
 }
 
 window.setItineraryDayPlans = setItineraryDayPlans;
 window.setCurrentItineraryDay = setCurrentItineraryDay;
+window.clearCurrentItineraryDayProjection = clearCurrentItineraryDayProjection;
 window.focusItineraryPoi = focusItineraryPoi;
 
 
