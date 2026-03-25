@@ -149,8 +149,11 @@
   let currentEditSessionBlock = null;
   let pendingEditSessionStart = false;
   let editModeChoiceInputLocked = false;
+  let suppressUiPersistence = false;
   const poiOpenTimeCache = new Map();
   const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
+  const TRIP_UI_STATE_KEY_PREFIX = 'trs_trip_ui_state_';
+  const TRIP_UI_SNAPSHOT_KEY_PREFIX = 'trs_trip_ui_snapshot_';
   const GUEST_PENDING_TRIP_KEY = 'trs_guest_pending_trip_questionnaire_v1';
   let _isPromotingGuestTrip = false;
   let guestTripHistory = [];
@@ -162,7 +165,7 @@ To get started, please fill out a short questionnaire about your trip preference
 This will help me recommend attractions and generate a realistic day-by-day plan.
 
 <span class="ai-questionnaire-link" role="button" tabindex="0">👉 Click the questionnaire link to begin.</span>`;
-  const EDIT_MODE_ADVICE_TEXT = 'Click Cancel to exit itinerary edit mode.';
+  const EDIT_MODE_ADVICE_TEXT = '(Click Cancel to exit itinerary edit mode.)';
 
   function _setItineraryEditMode(enabled) {
     isItineraryEditMode = !!enabled;
@@ -172,6 +175,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       pendingEditSessionStart = false;
       _setEditModeChoiceInputLock(false);
     }
+    _persistUiState();
   }
 
   function _markNextEditPromptAsSessionStart() {
@@ -215,6 +219,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     } else {
       inputEl.setAttribute('placeholder', 'Ask for travel recommendations...');
     }
+    _persistUiState();
   }
 
   function _syncEditInputLockFromAssistantWrap(wrap) {
@@ -237,6 +242,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     awaitingEditClarification = false;
     pendingAddDayChoiceParsed = null;
     _clearPendingEditSlot();
+    _persistUiState();
   }
 
   function appendMessage(role, content, isPlaceholder, useHtml) {
@@ -272,11 +278,196 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       _syncEditInputLockFromAssistantWrap(wrap);
     }
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    _persistUiSnapshot();
     return wrap;
   }
 
   function _tripHistoryKey(tripId) {
     return TRIP_HISTORY_KEY_PREFIX + String(tripId);
+  }
+
+  function _tripUiStateKey(tripId) {
+    return TRIP_UI_STATE_KEY_PREFIX + String(tripId);
+  }
+
+  function _tripUiSnapshotKey(tripId) {
+    return TRIP_UI_SNAPSHOT_KEY_PREFIX + String(tripId);
+  }
+
+  function _cloneJsonSafe(obj, fallbackValue) {
+    try {
+      return JSON.parse(JSON.stringify(obj));
+    } catch (_) {
+      return fallbackValue;
+    }
+  }
+
+  function _captureUiState() {
+    return {
+      is_edit_mode: !!isItineraryEditMode,
+      active_action: String(activeEditMenuAction || ''),
+      awaiting_edit_clarification: !!awaitingEditClarification,
+      pending_add_day_choice_parsed: _cloneJsonSafe(pendingAddDayChoiceParsed, null),
+      pending_edit_slot: _cloneJsonSafe(pendingEditSlot, null),
+      guided_add_context: _cloneJsonSafe(guidedAddContext, null),
+      guided_remove_context: _cloneJsonSafe(guidedRemoveContext, null),
+      guided_move_context: _cloneJsonSafe(guidedMoveContext, null),
+      guided_replace_context: _cloneJsonSafe(guidedReplaceContext, null),
+      input_locked: !!editModeChoiceInputLocked
+    };
+  }
+
+  function _saveTripUiState(tripId, state) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return;
+    try {
+      localStorage.setItem(_tripUiStateKey(tripId), JSON.stringify(Object.assign({ ts: Date.now() }, state || {})));
+    } catch (_) {}
+  }
+
+  function _saveTripUiSnapshot(tripId, snapshot) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return;
+    try {
+      localStorage.setItem(_tripUiSnapshotKey(tripId), JSON.stringify(Object.assign({ ts: Date.now() }, snapshot || {})));
+    } catch (_) {}
+  }
+
+  function _loadTripUiState(tripId) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return null;
+    try {
+      const raw = localStorage.getItem(_tripUiStateKey(tripId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function _loadTripUiSnapshot(tripId) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return null;
+    try {
+      const raw = localStorage.getItem(_tripUiSnapshotKey(tripId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function _clearTripUiState(tripId) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return;
+    try { localStorage.removeItem(_tripUiStateKey(tripId)); } catch (_) {}
+  }
+
+  function _clearTripUiSnapshot(tripId) {
+    if (!(Number.isFinite(Number(tripId)) && Number(tripId) > 0)) return;
+    try { localStorage.removeItem(_tripUiSnapshotKey(tripId)); } catch (_) {}
+  }
+
+  function _captureUiSnapshot() {
+    return {
+      messages_html: String(messagesEl?.innerHTML || ''),
+      chat_history: _cloneJsonSafe(chatHistory, []),
+      ui_state: _captureUiState(),
+      latest_version_menu_id: latestVersionMenuId || null,
+      local_preview_version: Number(localPreviewVersion) || 1,
+      version_display_offset: Number(versionDisplayOffset) || 0,
+      itinerary_day_plans: _cloneJsonSafe(itineraryDayPlansState, []),
+      guest_candidate_pool: _cloneJsonSafe(guestCandidatePoolState, [])
+    };
+  }
+
+  function _rebindRestoredUiInteractions() {
+    const wraps = Array.from(messagesEl.querySelectorAll('.ai-msg-wrap'));
+    wraps.forEach(wrap => {
+      if (wrap.querySelector('.ai-guided-action-btn[data-guided-action]')) bindGuidedActionButtons(wrap);
+      if (wrap.querySelector('[data-guided-add-source]')) bindGuidedAddSourceButtons(wrap);
+      if (wrap.querySelector('[data-guided-add-poi], [data-guided-add-poi-custom]')) bindGuidedAddPoiButtons(wrap);
+      if (wrap.querySelector('[data-guided-add-day]')) bindGuidedAddDayButtons(wrap);
+      if (wrap.querySelector('[data-guided-remove-day]')) bindGuidedRemoveDayButtons(wrap);
+      if (wrap.querySelector('[data-guided-remove-poi]')) bindGuidedRemovePoiButtons(wrap);
+      if (wrap.querySelector('[data-guided-move-source-day]')) bindGuidedMoveSourceDayButtons(wrap);
+      if (wrap.querySelector('[data-guided-move-poi]')) bindGuidedMovePoiButtons(wrap);
+      if (wrap.querySelector('[data-guided-move-target-day]')) bindGuidedMoveTargetDayButtons(wrap);
+      if (wrap.querySelector('[data-guided-replace-source-day]')) bindGuidedReplaceSourceDayButtons(wrap);
+      if (wrap.querySelector('[data-guided-replace-target-day]')) bindGuidedReplaceTargetDayButtons(wrap);
+      if (wrap.querySelector('[data-guided-replace-source-poi]')) bindGuidedReplaceSourcePoiButtons(wrap);
+      if (wrap.querySelector('[data-guided-replace-target-poi]')) bindGuidedReplaceTargetPoiButtons(wrap);
+      if (wrap.querySelector('.ai-edit-choice-btn')) bindEditChoiceButtons(wrap);
+      if (wrap.querySelector('.ai-itinerary-layout')) bindItineraryDayEvents(wrap);
+    });
+  }
+
+  function _persistUiSnapshot() {
+    if (suppressUiPersistence) return;
+    if (Number.isFinite(activeTripId) && activeTripId > 0) {
+      _saveTripUiSnapshot(activeTripId, _captureUiSnapshot());
+    }
+  }
+
+  function _restoreTripUiSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    const html = String(snapshot.messages_html || '');
+    if (!html.trim()) return false;
+    messagesEl.innerHTML = html;
+    chatHistory = Array.isArray(snapshot.chat_history) ? snapshot.chat_history : [];
+    latestVersionMenuId = String(snapshot.latest_version_menu_id || '') || null;
+    localPreviewVersion = Number(snapshot.local_preview_version) || localPreviewVersion || 1;
+    versionDisplayOffset = Number(snapshot.version_display_offset) || 0;
+    if (Array.isArray(snapshot.itinerary_day_plans) && snapshot.itinerary_day_plans.length) {
+      itineraryDayPlansState = snapshot.itinerary_day_plans;
+      if (typeof window.setItineraryDayPlans === 'function') {
+        window.setItineraryDayPlans(itineraryDayPlansState, 1);
+      }
+    }
+    if (Array.isArray(snapshot.guest_candidate_pool)) {
+      guestCandidatePoolState = snapshot.guest_candidate_pool;
+    }
+    _restoreUiState(snapshot.ui_state || null);
+    _rebindRestoredUiInteractions();
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return true;
+  }
+
+  function _persistUiState() {
+    if (suppressUiPersistence) return;
+    const state = _captureUiState();
+    if (Number.isFinite(activeTripId) && activeTripId > 0) {
+      _saveTripUiState(activeTripId, state);
+      _persistUiSnapshot();
+      return;
+    }
+    const pending = _loadGuestPendingTripState() || {};
+    _saveGuestPendingTripState(Object.assign({}, pending, { ui_state: state }));
+  }
+
+  function _runWithoutUiPersistence(fn) {
+    suppressUiPersistence = true;
+    try {
+      return fn();
+    } finally {
+      suppressUiPersistence = false;
+    }
+  }
+
+  function _restoreUiState(uiState) {
+    const s = (uiState && typeof uiState === 'object') ? uiState : null;
+    if (!s) return;
+    activeEditMenuAction = String(s.active_action || '') || null;
+    awaitingEditClarification = !!s.awaiting_edit_clarification;
+    pendingAddDayChoiceParsed = (s.pending_add_day_choice_parsed && typeof s.pending_add_day_choice_parsed === 'object')
+      ? s.pending_add_day_choice_parsed
+      : null;
+    pendingEditSlot = (s.pending_edit_slot && typeof s.pending_edit_slot === 'object')
+      ? s.pending_edit_slot
+      : null;
+    guidedAddContext = (s.guided_add_context && typeof s.guided_add_context === 'object') ? s.guided_add_context : null;
+    guidedRemoveContext = (s.guided_remove_context && typeof s.guided_remove_context === 'object') ? s.guided_remove_context : null;
+    guidedMoveContext = (s.guided_move_context && typeof s.guided_move_context === 'object') ? s.guided_move_context : null;
+    guidedReplaceContext = (s.guided_replace_context && typeof s.guided_replace_context === 'object') ? s.guided_replace_context : null;
+    _setItineraryEditMode(!!s.is_edit_mode);
+    if (s.input_locked === true) _setEditModeChoiceInputLock(true);
   }
 
   function _loadTripHistory(tripId) {
@@ -366,7 +557,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       history: guestTripHistory,
       day_plans: itineraryDayPlansState,
       version: localPreviewVersion,
-      pois: guestCandidatePoolState
+      pois: guestCandidatePoolState,
+      ui_state: _captureUiState()
     }));
   }
 
@@ -423,6 +615,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     }
     _syncEditInputLockFromAssistantWrap(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    _persistUiSnapshot();
   }
 
   function setBubbleHtmlContent(wrap, contentHtml) {
@@ -437,6 +630,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     _applyEditChoiceRowPresentation(wrap);
     _syncEditInputLockFromAssistantWrap(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    _persistUiSnapshot();
   }
 
   function _applyEditChoiceRowPresentation(wrap) {
@@ -865,6 +1059,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       prompt: String(promptText || 'Which day would you like to add it to? (please choose day)'),
       parsed_base: base
     };
+    _persistUiState();
   }
 
   function _setPendingAddPoiSlot(promptText) {
@@ -877,10 +1072,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         constraints: { add_mode: 'append', nearby: false, same_type: null, avoid_type: null }
       }
     };
+    _persistUiState();
   }
 
   function _clearPendingEditSlot() {
     pendingEditSlot = null;
+    _persistUiState();
   }
 
   function _maybeRenderDayClarificationFallback(question, parsed) {
@@ -1030,6 +1227,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       b.style.opacity = '0.6';
       b.style.cursor = 'not-allowed';
     });
+    _persistUiSnapshot();
   }
 
   function _normName(name) {
@@ -1887,6 +2085,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           _markNextEditPromptAsSessionStart();
         }
         _lockChoiceButtons(wrap, '.ai-guided-action-btn');
+        this.classList.add('ai-version-menu-selected');
+        this.style.opacity = '1';
         const menuId = String(wrap.dataset.menuId || '').trim();
         if (menuId) {
           const selectionRecord = {
@@ -2292,8 +2492,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   async function fetchAndRenderItinerary(tripId, options) {
     const silentSync = !!(options && options.silentSync);
     const showEditMenu = !!(options && options.showEditMenu);
-    _setItineraryEditMode(false);
-    _clearGuidedEditTransientState();
+    _runWithoutUiPersistence(function() {
+      _setItineraryEditMode(false);
+      _clearGuidedEditTransientState();
+    });
+    const savedUiSnapshot = _loadTripUiSnapshot(tripId);
+    const shouldRestoreUiSnapshot = !!(savedUiSnapshot && String(savedUiSnapshot.messages_html || '').trim());
     const history = _loadTripHistory(tripId);
     const historyMaxVersion = _maxVersionInHistory(history);
     const menuStateById = {};
@@ -2331,7 +2535,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     });
     const lastMenuId = menuOrder.length ? menuOrder[menuOrder.length - 1] : null;
     latestVersionMenuId = lastMenuId || null;
-    if (history.length > 0) {
+    if (history.length > 0 && !shouldRestoreUiSnapshot) {
       messagesEl.innerHTML = '';
       chatHistory = [];
       let replayCurrentMenuId = null;
@@ -2353,6 +2557,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
             if (selected) {
               const selectedBtn = menuWrap.querySelector('[data-guided-action="' + selected + '"]');
               if (selectedBtn) {
+                selectedBtn.classList.add('ai-version-menu-selected');
                 selectedBtn.style.opacity = '1';
                 selectedBtn.style.borderColor = '#3b82f6';
               }
@@ -2399,7 +2604,11 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     }
 
     activeTripId = Number(tripId) || null;
-    const placeholderWrap = (!silentSync || history.length === 0) ? appendMessage('assistant', '', true) : null;
+    const savedUiState = _loadTripUiState(tripId);
+    if (savedUiState && !shouldRestoreUiSnapshot) _restoreUiState(savedUiState);
+    const placeholderWrap = shouldRestoreUiSnapshot
+      ? null
+      : ((!silentSync || history.length === 0) ? appendMessage('assistant', '', true) : null);
     try {
       const res = await fetch('/api/trips/' + encodeURIComponent(tripId) + '/candidates');
       const data = await res.json();
@@ -2432,6 +2641,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         });
       }
       const currentVersion = _displayVersion(backendCurrentVersion);
+      if (shouldRestoreUiSnapshot) {
+        const restored = _restoreTripUiSnapshot(savedUiSnapshot);
+        if (!restored && Array.isArray(itineraryDayPlansState) && itineraryDayPlansState.length > 0) {
+          _appendVersionFollowupMenu(currentVersion, { persistHistory: showEditMenu });
+        }
+        return;
+      }
       if (Array.isArray(itineraryDayPlansState) && itineraryDayPlansState.length > 0) {
         const shouldAppendMenu = !(silentSync && history.length > 0);
         if (shouldAppendMenu) {
@@ -2446,13 +2662,15 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   window.openTripInAI = function(tripId) {
     const id = Number(tripId);
     if (!(Number.isFinite(id) && id > 0)) return;
-    _setItineraryEditMode(false);
-    activeTripId = id;
-    guidedEditAction = null;
-    guidedAddContext = null;
-    guidedRemoveContext = null;
-    guidedMoveContext = null;
-    guidedReplaceContext = null;
+    _runWithoutUiPersistence(function() {
+      _setItineraryEditMode(false);
+      activeTripId = id;
+      guidedEditAction = null;
+      guidedAddContext = null;
+      guidedRemoveContext = null;
+      guidedMoveContext = null;
+      guidedReplaceContext = null;
+    });
     // Opening an existing trip should replay history only, never show new-trip questionnaire welcome.
     welcomeShown = true;
     fetchAndRenderItinerary(id, { silentSync: true });
@@ -3034,8 +3252,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       messagesEl.innerHTML = '';
       messagesEl.scrollTop = 0;
 
-      _setItineraryEditMode(false);
-      activeTripId = null;
+      _runWithoutUiPersistence(function() {
+        _setItineraryEditMode(false);
+        activeTripId = null;
+      });
       guestCandidatePoolState = [];
       localPreviewVersion = 1;
       versionDisplayOffset = 0;
@@ -3241,8 +3461,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         if (result.preview_only) {
           guestTripHistory = [];
           _saveGuestPendingTripState({ questionnaire: data });
-          _setItineraryEditMode(false);
-          activeTripId = null;
+          _runWithoutUiPersistence(function() {
+            _setItineraryEditMode(false);
+            activeTripId = null;
+          });
           guidedEditAction = null;
           guidedAddContext = null;
           guidedRemoveContext = null;

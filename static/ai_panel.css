@@ -248,6 +248,13 @@ body.show-ai-panel #ai-panel {
   border-color: #60a5fa;
 }
 
+.ai-guided-action-btn.ai-version-menu-btn.ai-version-menu-selected {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  opacity: 1 !important;
+}
+
 .ai-edit-choice-btn.ai-edit-choice-type-again {
   background: #dceadf;
   color: #15231a;

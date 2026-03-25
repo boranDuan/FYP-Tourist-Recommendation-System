@@ -106,8 +106,8 @@ function renderFavorites(container, favorites) {
     container.appendChild(card);
   });
 
-  // Try to hydrate missing card images using Google Places first photo.
-  hydrateFavoriteCardPhotos(container);
+  // Hydrate card images using Google Places first photo reference (stable URL).
+  hydrateFavoriteCardPhotos(container, 0, true);
 }
 
 function _getPlacesServiceForFavorites() {
@@ -132,6 +132,16 @@ function _favoritePhotoUrlFromRef(photoRef) {
     : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}`;
 }
 
+function _extractPhotoRefFromUrl(url) {
+  try {
+    const u = new URL(String(url || ''));
+    const ref = u.searchParams.get('photoreference');
+    return ref ? String(ref) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function _applyFavoriteCardPhoto(card, placeName, photoUrl) {
   if (!card || !photoUrl) return;
   const container = card.querySelector('.favorite-card-image-container');
@@ -144,31 +154,35 @@ function _applyFavoriteCardPhoto(card, placeName, photoUrl) {
   `;
 }
 
-function hydrateFavoriteCardPhotos(container, attempt = 0) {
+function hydrateFavoriteCardPhotos(container, attempt = 0, forceRefresh = false) {
   if (!container) return;
-  const placeholders = Array.from(container.querySelectorAll('.favorite-card-image-placeholder[data-place-id]'));
-  if (!placeholders.length) return;
+  const cards = Array.from(container.querySelectorAll('.favorite-card[data-place-id]'));
+  if (!cards.length) return;
   const svc = _getPlacesServiceForFavorites();
   if (!svc || !(window.google && google.maps && google.maps.places)) {
     if (attempt < 6) {
-      setTimeout(() => hydrateFavoriteCardPhotos(container, attempt + 1), 250);
+      setTimeout(() => hydrateFavoriteCardPhotos(container, attempt + 1, forceRefresh), 250);
     }
     return;
   }
 
-  placeholders.forEach((ph) => {
-    const placeId = String(ph.dataset.placeId || '').trim();
+  cards.forEach((card) => {
+    const placeId = String(card.dataset.placeId || '').trim();
     if (!placeId) return;
-    const card = ph.closest('.favorite-card');
     const placeName = (card && card.querySelector('.favorite-card-name'))
       ? card.querySelector('.favorite-card-name').textContent
       : 'Favorite place';
+    const existingImg = card.querySelector('.favorite-card-image');
+    const existingSrc = existingImg ? String(existingImg.getAttribute('src') || '') : '';
+    const existingRef = _extractPhotoRefFromUrl(existingSrc);
 
     if (favoritePhotoRefCache.has(placeId)) {
       const cachedRef = favoritePhotoRefCache.get(placeId);
       if (cachedRef) {
-        const cachedUrl = _favoritePhotoUrlFromRef(cachedRef);
-        _applyFavoriteCardPhoto(card, placeName, cachedUrl);
+        if (!existingImg || !existingRef || forceRefresh || existingRef !== cachedRef) {
+          const cachedUrl = _favoritePhotoUrlFromRef(cachedRef);
+          _applyFavoriteCardPhoto(card, placeName, cachedUrl);
+        }
       }
       return;
     }
@@ -199,6 +213,7 @@ function createFavoriteCard(favorite, index) {
   const card = document.createElement('div');
   card.className = 'favorite-card';
   card.dataset.favoriteId = favorite.id;
+  card.dataset.placeId = favorite.place_id || '';
   
   // 解析 place_data（兼容数据库格式和 localStorage 格式）
   const placeData = favorite.place_data || {};
@@ -210,21 +225,36 @@ function createFavoriteCard(favorite, index) {
       ? CONFIG.GOOGLE_MAPS_API_KEY
       : '';
     processedPhotos = placeData.photos.map(p => {
-      // Direct URL saved from Places Photo object.
-      if (typeof p === 'object' && p && p.url) {
-        return String(p.url);
-      }
-      // Object photo_reference -> build Google photo URL.
+      // Prefer photo_reference for stable URLs across panel reloads.
       if (typeof p === 'object' && p && p.photo_reference) {
         const ref = String(p.photo_reference);
         return apiKey
           ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
           : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
       }
+      // Direct URL saved from Places Photo object (may be temporary).
+      if (typeof p === 'object' && p && p.url) {
+        const s = String(p.url);
+        const ref = _extractPhotoRefFromUrl(s);
+        if (ref) {
+          return apiKey
+            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
+            : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
+        }
+        return s;
+      }
       // String can be full URL or plain photo_reference.
       if (typeof p === 'string') {
         const s = String(p);
-        if (/^https?:\/\//i.test(s)) return s;
+        if (/^https?:\/\//i.test(s)) {
+          const ref = _extractPhotoRefFromUrl(s);
+          if (ref) {
+            return apiKey
+              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
+              : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
+          }
+          return s;
+        }
         return apiKey
           ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${s}&key=${apiKey}`
           : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${s}`;
@@ -332,6 +362,24 @@ function createFavoriteCard(favorite, index) {
         handlePlaceSelected(favorite.place_id, name, true);
       }
     }
+  });
+
+  // If a stored photo URL expires, fallback to placeholder then rehydrate via place_id.
+  card.querySelectorAll('.favorite-card-image').forEach(img => {
+    img.addEventListener('error', function() {
+      const placeId = String(card.dataset.placeId || '').trim();
+      if (!placeId) return;
+      const imageContainer = card.querySelector('.favorite-card-image-container');
+      if (!imageContainer) return;
+      imageContainer.innerHTML = `
+        <div class="favorite-card-image-placeholder" data-place-id="${placeId}">
+          <span class="material-symbols-outlined">image</span>
+          <span>No Image</span>
+        </div>
+      `;
+      const host = document.getElementById('favorites-container');
+      if (host) hydrateFavoriteCardPhotos(host, 0, true);
+    }, { once: true });
   });
   
   return card;
