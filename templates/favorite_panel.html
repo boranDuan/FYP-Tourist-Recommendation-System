@@ -15,6 +15,7 @@
 {% macro favorite_panel_js() %}
 // 收藏面板相关功能
 let favoritesData = [];
+const favoritePhotoRefCache = new Map(); // place_id -> photo_reference|null
 
 /**
  * 检查用户是否登录
@@ -104,6 +105,91 @@ function renderFavorites(container, favorites) {
     const card = createFavoriteCard(favorite, index);
     container.appendChild(card);
   });
+
+  // Try to hydrate missing card images using Google Places first photo.
+  hydrateFavoriteCardPhotos(container);
+}
+
+function _getPlacesServiceForFavorites() {
+  try {
+    if (typeof placesService !== 'undefined' && placesService) return placesService;
+  } catch (_) {}
+  if (window.placesService) return window.placesService;
+  if (window.google && google.maps && google.maps.places && window.map) {
+    const svc = new google.maps.places.PlacesService(window.map);
+    window.placesService = svc;
+    return svc;
+  }
+  return null;
+}
+
+function _favoritePhotoUrlFromRef(photoRef) {
+  const apiKey = (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_MAPS_API_KEY)
+    ? CONFIG.GOOGLE_MAPS_API_KEY
+    : '';
+  return apiKey
+    ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
+    : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}`;
+}
+
+function _applyFavoriteCardPhoto(card, placeName, photoUrl) {
+  if (!card || !photoUrl) return;
+  const container = card.querySelector('.favorite-card-image-container');
+  if (!container) return;
+  const safeName = String(placeName || 'Favorite place');
+  container.innerHTML = `
+    <div class="favorite-card-image-wrapper" data-photo-index="0">
+      <img src="${photoUrl}" alt="${safeName}" class="favorite-card-image active" data-index="0">
+    </div>
+  `;
+}
+
+function hydrateFavoriteCardPhotos(container, attempt = 0) {
+  if (!container) return;
+  const placeholders = Array.from(container.querySelectorAll('.favorite-card-image-placeholder[data-place-id]'));
+  if (!placeholders.length) return;
+  const svc = _getPlacesServiceForFavorites();
+  if (!svc || !(window.google && google.maps && google.maps.places)) {
+    if (attempt < 6) {
+      setTimeout(() => hydrateFavoriteCardPhotos(container, attempt + 1), 250);
+    }
+    return;
+  }
+
+  placeholders.forEach((ph) => {
+    const placeId = String(ph.dataset.placeId || '').trim();
+    if (!placeId) return;
+    const card = ph.closest('.favorite-card');
+    const placeName = (card && card.querySelector('.favorite-card-name'))
+      ? card.querySelector('.favorite-card-name').textContent
+      : 'Favorite place';
+
+    if (favoritePhotoRefCache.has(placeId)) {
+      const cachedRef = favoritePhotoRefCache.get(placeId);
+      if (cachedRef) {
+        const cachedUrl = _favoritePhotoUrlFromRef(cachedRef);
+        _applyFavoriteCardPhoto(card, placeName, cachedUrl);
+      }
+      return;
+    }
+
+    svc.getDetails(
+      { placeId, fields: ['photos'] },
+      (place, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
+          favoritePhotoRefCache.set(placeId, null);
+          return;
+        }
+        const first = Array.isArray(place.photos) && place.photos.length ? place.photos[0] : null;
+        const photoRef = first && first.photo_reference ? String(first.photo_reference) : null;
+        const photoUrl = first && typeof first.getUrl === 'function'
+          ? first.getUrl({ maxWidth: 400, maxHeight: 260 })
+          : (photoRef ? _favoritePhotoUrlFromRef(photoRef) : null);
+        favoritePhotoRefCache.set(placeId, photoRef);
+        if (photoUrl) _applyFavoriteCardPhoto(card, placeName, photoUrl);
+      }
+    );
+  });
 }
 
 /**
@@ -175,7 +261,7 @@ function createFavoriteCard(favorite, index) {
     // 没有图片时显示占位符
     imageHtml = `
       <div class="favorite-card-image-container">
-        <div class="favorite-card-image-placeholder">
+        <div class="favorite-card-image-placeholder" data-place-id="${favorite.place_id || ''}">
           <span class="material-symbols-outlined">image</span>
           <span>No Image</span>
         </div>
