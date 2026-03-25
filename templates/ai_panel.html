@@ -360,6 +360,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
   function _choiceLabel(choice) {
     const c = String(choice || '');
+    if (c === 'confirm_yes') return 'Yes';
+    if (c === 'confirm_no') return 'No';
+    if (c === 'type_again') return 'Type again';
     if (c === 'remove_only') return 'Remove only';
     if (c === 'replace_nearby_same_type') return 'Remove & replace nearby';
     if (c === 'add_direct') return 'Add to itinerary';
@@ -412,6 +415,39 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       out.intent = 'add_poi';
       out.constraints.add_mode = 'replace';
       out.constraints.replace_poi_name = String(choice || '').trim();
+      return out;
+    }
+    if (clarificationType === 'confirm_add_candidate_yes_no') {
+      if (choice === 'confirm_yes') {
+        const proposed = String(out?.constraints?.proposed_poi_name || '').trim();
+        if (proposed) {
+          out.intent = 'add_poi';
+          out.poi_name = proposed;
+          out.constraints.candidate_selected = true;
+        }
+      } else if (choice === 'confirm_no') {
+        out.needs_clarification = true;
+        out.clarification_type = 'choose_add_candidate_from_list';
+        out.clarification_question = 'Is the place you want to visit in these options? If not, please type the exact POI name you want to add.';
+        // Let backend fill Google top5 options.
+        out.clarification_options = [];
+      }
+      if (out.constraints) {
+        delete out.constraints.proposed_poi_name;
+      }
+      return out;
+    }
+    if (clarificationType === 'choose_add_candidate_from_list') {
+      if (choice === 'type_again') {
+        out.needs_clarification = true;
+        out.clarification_type = 'reenter_add_poi_name';
+        out.clarification_question = 'Please type the exact POI name you want to add.';
+        out.clarification_options = [];
+      } else {
+        out.intent = 'add_poi';
+        out.poi_name = String(choice || '').trim();
+        out.constraints.candidate_selected = true;
+      }
       return out;
     }
     return out;
@@ -501,14 +537,31 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
   function _isVersionFollowupText(text) {
     const s = String(text || '').trim();
-    return /^This is your Version\s+\d+\.\s+If you still need changes, you can continue:/i.test(s);
+    return /^This is your Version\s+\d+\.\s+If you still need changes, you can continue:/i.test(s)
+      || /^If you still need changes, you can continue:/i.test(s);
+  }
+
+  function _shouldShowVersionFollowupAfterApplyMessage(message) {
+    const s = String(message || '').trim().toLowerCase();
+    return s.includes('already in your itinerary');
+  }
+
+  function _currentDisplayVersionForFollowup() {
+    const historyMax = _maxVersionInHistory(chatHistory);
+    if (Number.isFinite(historyMax) && historyMax >= 1) return historyMax;
+    const fallback = Number(_displayVersion(localPreviewVersion));
+    if (Number.isFinite(fallback) && fallback >= 1) return fallback;
+    return 1;
   }
 
   function _appendVersionFollowupMenu(version, options) {
     const v = Number(version);
-    if (!(Number.isFinite(v) && v >= 1)) return;
+    const hideVersion = !!(options && options.hideVersion);
+    if (!hideVersion && !(Number.isFinite(v) && v >= 1)) return;
     const persistHistory = !!(options && options.persistHistory);
-    const text = 'This is your Version ' + String(v) + '. If you still need changes, you can continue:';
+    const text = hideVersion
+      ? 'If you still need changes, you can continue:'
+      : ('This is your Version ' + String(v) + '. If you still need changes, you can continue:');
     const menuId = _newMenuId();
     const wrap = appendMessage('assistant', '', false, true);
     wrap.dataset.menuId = menuId;
@@ -945,7 +998,11 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         _appendConversationText('assistant', q);
         return;
       }
-      setBubbleContent(placeholderWrap, (applyData && applyData.message) || 'Failed to apply your edit.');
+      const message = (applyData && applyData.message) || 'Failed to apply your edit.';
+      setBubbleContent(placeholderWrap, message);
+      if (_shouldShowVersionFollowupAfterApplyMessage(message)) {
+        _appendVersionFollowupMenu(_currentDisplayVersionForFollowup(), { persistHistory: true, hideVersion: true });
+      }
     } catch (_) {
       setBubbleContent(placeholderWrap, 'Network error. Please try again.');
     }
@@ -2133,6 +2190,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
             }
             if (applyData && applyData.message) {
               setBubbleContent(placeholderWrap, applyData.message);
+              if (_shouldShowVersionFollowupAfterApplyMessage(applyData.message)) {
+                _appendVersionFollowupMenu(_currentDisplayVersionForFollowup(), { persistHistory: true, hideVersion: true });
+              }
               return;
             }
           }

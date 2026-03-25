@@ -10,6 +10,7 @@ from addMustVisit import (
     execute_add_must_visit as _execute_add_must_visit,
     fill_clarification_options as _add_fill_clarification_options,
     init_add_must_visit,
+    preparse_add_candidate_gate as _add_preparse_candidate_gate,
     resolve_choice_from_text as _add_resolve_choice_from_text,
 )
 from removePOI import (
@@ -260,7 +261,15 @@ def _apply_choice_to_parsed(parsed, choice, clarification_type=None):
 
     if choice in ("remove_only", "replace_nearby_same_type"):
         out = _remove_apply_choice_to_parsed(out, choice)
-    elif choice in ("add_direct", "replace_existing") or str(choice).startswith("day_") or clarification_type == "choose_replace_target_poi":
+    elif (
+        choice in ("add_direct", "replace_existing")
+        or str(choice).startswith("day_")
+        or clarification_type in (
+            "choose_replace_target_poi",
+            "confirm_add_candidate_yes_no",
+            "choose_add_candidate_from_list",
+        )
+    ):
         out = _add_apply_choice_to_parsed(out, choice, clarification_type)
     return out
 
@@ -750,7 +759,9 @@ def register_change_poi_routes(app):
                 parsed = _enforce_parse_clarification_rules(parsed, user_text)
                 active_for_opts = _get_active_itinerary_for_trip(trip_id)
                 day_plans_for_opts = (active_for_opts.content_json or {}).get("day_plans") if (active_for_opts and isinstance(active_for_opts.content_json, dict)) else []
-                parsed = _add_fill_clarification_options(parsed, day_plans_for_opts)
+                pool_for_opts = (active_for_opts.content_json or {}).get("pois") if (active_for_opts and isinstance(active_for_opts.content_json, dict)) else []
+                parsed = _add_preparse_candidate_gate(parsed, pool_for_opts, day_plans_for_opts, _pick_poi_match)
+                parsed = _add_fill_clarification_options(parsed, day_plans_for_opts, pool_for_opts)
                 if parsed.get("needs_clarification"):
                     _set_dialog_state(
                         user_id,
@@ -762,14 +773,21 @@ def register_change_poi_routes(app):
                 else:
                     _clear_dialog_state(user_id, trip_id)
                 return _resp_parsed(trip_id, parsed)
-            if ctype == "choose_replace_target_poi":
+            if ctype in ("choose_replace_target_poi", "reenter_add_poi_name"):
                 parsed = copy.deepcopy(p)
                 parsed["constraints"] = dict(parsed.get("constraints") or {})
-                parsed["constraints"]["replace_poi_name"] = user_text
+                if ctype == "choose_replace_target_poi":
+                    parsed["constraints"]["replace_poi_name"] = user_text
+                else:
+                    parsed["poi_name"] = user_text
+                    parsed["constraints"].pop("candidate_selected", None)
+                    parsed["constraints"].pop("proposed_poi_name", None)
                 parsed = _enforce_parse_clarification_rules(parsed, user_text)
                 active_for_opts = _get_active_itinerary_for_trip(trip_id)
                 day_plans_for_opts = (active_for_opts.content_json or {}).get("day_plans") if (active_for_opts and isinstance(active_for_opts.content_json, dict)) else []
-                parsed = _add_fill_clarification_options(parsed, day_plans_for_opts)
+                pool_for_opts = (active_for_opts.content_json or {}).get("pois") if (active_for_opts and isinstance(active_for_opts.content_json, dict)) else []
+                parsed = _add_preparse_candidate_gate(parsed, pool_for_opts, day_plans_for_opts, _pick_poi_match)
+                parsed = _add_fill_clarification_options(parsed, day_plans_for_opts, pool_for_opts)
                 if parsed.get("needs_clarification"):
                     _set_dialog_state(
                         user_id,
@@ -790,7 +808,9 @@ def register_change_poi_routes(app):
             return _resp_error(err, status=500)
 
         day_plans_for_opts = (active.content_json or {}).get("day_plans") if (active and isinstance(active.content_json, dict)) else []
-        parsed = _add_fill_clarification_options(parsed, day_plans_for_opts)
+        pool_for_opts = (active.content_json or {}).get("pois") if (active and isinstance(active.content_json, dict)) else []
+        parsed = _add_preparse_candidate_gate(parsed, pool_for_opts, day_plans_for_opts, _pick_poi_match)
+        parsed = _add_fill_clarification_options(parsed, day_plans_for_opts, pool_for_opts)
         if parsed.get("needs_clarification"):
             _set_dialog_state(
                 user_id,
@@ -840,6 +860,9 @@ def register_change_poi_routes(app):
                 return _resp_error(err, status=500)
 
         if parsed.get("needs_clarification"):
+            day_plans_for_opts = (active.content_json or {}).get("day_plans") if (active and isinstance(active.content_json, dict)) else []
+            pool_for_opts = (active.content_json or {}).get("pois") if (active and isinstance(active.content_json, dict)) else []
+            parsed = _add_fill_clarification_options(parsed, day_plans_for_opts, pool_for_opts)
             return _resp_clarify(
                 trip_id,
                 parsed,
