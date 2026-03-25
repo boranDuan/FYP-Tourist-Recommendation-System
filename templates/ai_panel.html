@@ -146,6 +146,8 @@
   let pendingEditSlot = null; // { intent, slot, prompt, parsed_base }
   let isItineraryEditMode = false;
   let activeEditMenuAction = null;
+  let currentEditSessionBlock = null;
+  let pendingEditSessionStart = false;
   const poiOpenTimeCache = new Map();
   const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
   const GUEST_PENDING_TRIP_KEY = 'trs_guest_pending_trip_questionnaire_v1';
@@ -163,6 +165,26 @@ This will help me recommend attractions and generate a realistic day-by-day plan
   function _setItineraryEditMode(enabled) {
     isItineraryEditMode = !!enabled;
     messagesEl.classList.toggle('ai-chat-edit-mode', isItineraryEditMode);
+    if (!isItineraryEditMode) {
+      currentEditSessionBlock = null;
+      pendingEditSessionStart = false;
+    }
+  }
+
+  function _markNextEditPromptAsSessionStart() {
+    if (!currentEditSessionBlock) {
+      pendingEditSessionStart = true;
+    }
+  }
+
+  function _ensureEditSessionBlock() {
+    if (currentEditSessionBlock) return currentEditSessionBlock;
+    const block = document.createElement('div');
+    block.className = 'ai-edit-session-block';
+    messagesEl.appendChild(block);
+    currentEditSessionBlock = block;
+    pendingEditSessionStart = false;
+    return block;
   }
 
   function _clearGuidedEditTransientState() {
@@ -200,7 +222,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       bubble.appendChild(text);
     }
     wrap.appendChild(bubble);
-    messagesEl.appendChild(wrap);
+    let parentEl = messagesEl;
+    const shouldGroupInEditSession = isItineraryEditMode && (role === 'assistant' || role === 'user') && (currentEditSessionBlock || pendingEditSessionStart);
+    if (shouldGroupInEditSession) {
+      parentEl = _ensureEditSessionBlock();
+    }
+    parentEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return wrap;
   }
@@ -368,6 +395,16 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
   function _resetWrapToDefaultAssistantStyle(wrap) {
     if (!wrap) return;
+    const parent = wrap.parentElement;
+    if (parent && parent.classList && parent.classList.contains('ai-edit-session-block')) {
+      messagesEl.insertBefore(wrap, parent.nextSibling);
+      if (parent.childElementCount === 0) {
+        parent.remove();
+      }
+      if (currentEditSessionBlock === parent) {
+        currentEditSessionBlock = null;
+      }
+    }
     wrap.classList.remove('ai-edit-mode-message');
     const bubble = wrap.querySelector('.ai-msg-bubble');
     if (bubble) {
@@ -1758,6 +1795,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         if (action === 'add_poi' || action === 'remove_poi' || action === 'move_poi' || action === 'replace_poi' || action === 'adjust_trip_days') {
           activeEditMenuAction = action;
           _setItineraryEditMode(true);
+          _markNextEditPromptAsSessionStart();
         }
         _lockChoiceButtons(wrap, '.ai-guided-action-btn');
         const menuId = String(wrap.dataset.menuId || '').trim();

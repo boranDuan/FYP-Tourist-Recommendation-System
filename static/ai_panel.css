@@ -125,6 +125,16 @@ body.show-ai-panel #ai-panel {
   white-space: pre-wrap;
 }
 
+.ai-edit-session-block {
+  background: #f4fbf7;
+  border: 1px solid #cfe8da;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .ai-msg-wrap.ai-edit-mode-message.ai-msg-assistant .ai-msg-bubble.ai-edit-mode-assistant {
   background: #f4fbf7;
   color: #1f5134;
