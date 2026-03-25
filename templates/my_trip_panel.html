@@ -15,6 +15,13 @@
 let myTripsData = [];
 let activeMyTripCardId = null;
 
+window.setActiveMyTripCard = function(tripId) {
+  const id = Number(tripId);
+  if (Number.isFinite(id) && id > 0) {
+    activeMyTripCardId = id;
+  }
+};
+
 async function _checkTripPanelLoggedIn() {
   if (typeof checkUserLoggedIn === 'function') {
     return checkUserLoggedIn();

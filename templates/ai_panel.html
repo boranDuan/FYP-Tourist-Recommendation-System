@@ -3504,6 +3504,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           return;
         }
         if (result.trip_id) {
+          if (typeof window.setActiveMyTripCard === 'function') {
+            window.setActiveMyTripCard(result.trip_id);
+          }
+          if (typeof loadMyTrips === 'function') {
+            loadMyTrips();
+          }
           fetchAndRenderItinerary(result.trip_id, { showEditMenu: true });
         }
       } catch (err) {
