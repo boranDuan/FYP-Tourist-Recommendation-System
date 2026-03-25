@@ -88,9 +88,17 @@ def resolve_choice_from_text(user_text, options, clarification_type=None):
         if not m:
             m = re.search(r"^\s*(\d+)\s*$", txt)
         if m:
-            day_opt = f"day_{int(m.group(1))}"
-            # Accept direct numeric input even if options were not populated.
-            if (not opts) or (day_opt in opts):
+            day_num = int(m.group(1))
+            day_opt = f"day_{day_num}"
+            # Accept common option formats: day_2 / 2 / day 2.
+            if not opts:
+                return day_opt
+            normalized_opts = {str(o).strip().lower() for o in opts}
+            if (
+                day_opt in normalized_opts
+                or str(day_num) in normalized_opts
+                or f"day {day_num}" in normalized_opts
+            ):
                 return day_opt
 
     if clarification_type == "choose_replace_target_poi":
@@ -139,7 +147,9 @@ def apply_choice_to_parsed(parsed, choice, clarification_type=None):
             if proposed:
                 out["poi_name"] = proposed
                 out["constraints"]["candidate_selected"] = True
+                out["constraints"]["candidate_selected_from_clarification"] = True
         elif choice == "confirm_no":
+            rejected = str(out["constraints"].get("proposed_poi_name") or "").strip()
             out["needs_clarification"] = True
             out["clarification_type"] = "choose_add_candidate_from_list"
             out["clarification_question"] = (
@@ -147,6 +157,8 @@ def apply_choice_to_parsed(parsed, choice, clarification_type=None):
                 "If not, please type the exact POI name you want to add."
             )
             out["clarification_options"] = []
+            if rejected:
+                out["constraints"]["rejected_poi_name"] = rejected
         out["constraints"].pop("proposed_poi_name", None)
     elif clarification_type == "choose_add_candidate_from_list":
         if choice == "type_again":
@@ -157,6 +169,7 @@ def apply_choice_to_parsed(parsed, choice, clarification_type=None):
         else:
             out["poi_name"] = str(choice or "").strip()
             out["constraints"]["candidate_selected"] = True
+            out["constraints"]["candidate_selected_from_clarification"] = True
     return out
 
 
@@ -198,12 +211,19 @@ def fill_clarification_options(parsed, day_plans, pool=None):
         parsed["clarification_options"] = replace_target_poi_options(day_plans)
     if ctype == "choose_add_candidate_from_list" and not parsed.get("clarification_options"):
         poi_name = str(parsed.get("poi_name") or "").strip()
-        google_opts = [str((x or {}).get("name") or "").strip() for x in _google_top_matches(poi_name, limit=5)]
-        google_opts = [x for x in google_opts if x]
-        if google_opts:
-            options = google_opts
-        else:
-            options = _top_candidate_names_for_query(pool or [], poi_name, limit=5, exclude_keys=_existing_poi_name_keys(day_plans))
+        constraints = parsed.get("constraints") if isinstance(parsed.get("constraints"), dict) else {}
+        rejected_name = str(constraints.get("rejected_poi_name") or "").strip()
+        rejected_norm = _norm_poi_name(rejected_name) if rejected_name else ""
+        existing_keys = _existing_poi_name_keys(day_plans)
+        if rejected_norm:
+            existing_keys.add(rejected_norm)
+
+        # Per product requirement, low/medium suggestion lists must come from Google search ranking.
+        options = _google_top_candidate_names_for_query(
+            poi_name,
+            limit=5,
+            exclude_keys=existing_keys,
+        )
         if "type_again" not in options:
             options.append("type_again")
         parsed["clarification_options"] = options
@@ -343,12 +363,17 @@ def _google_top_matches(poi_name, limit=5):
     if not gmaps_client:
         return []
     try:
-        place = gmaps_client.find_place(
-            f"{token} Dublin",
-            "textquery",
-            fields=["name", "place_id", "geometry"],
-        )
-        candidates = place.get("candidates") or []
+        # Prefer Places Text Search for ranking-style top-N results.
+        place = gmaps_client.places(query=f"{token} Dublin")
+        candidates = place.get("results") or []
+        if not candidates:
+            # Fallback for environments where places() is restricted/unavailable.
+            place = gmaps_client.find_place(
+                f"{token} Dublin",
+                "textquery",
+                fields=["name", "place_id", "geometry"],
+            )
+            candidates = place.get("candidates") or []
         out = []
         seen = set()
         for c in candidates:
@@ -380,6 +405,24 @@ def _google_top_matches(poi_name, limit=5):
         return out
     except Exception:
         return []
+
+
+def _google_top_candidate_names_for_query(poi_name, limit=8, exclude_keys=None):
+    exclude = set(exclude_keys or set())
+    out = []
+    seen = set()
+    for c in _google_top_matches(poi_name, limit=max(12, int(limit) * 2)):
+        name = str((c or {}).get("name") or "").strip()
+        if not name:
+            continue
+        key = _norm_poi_name(name)
+        if not key or key in seen or key in exclude:
+            continue
+        seen.add(key)
+        out.append(name)
+        if len(out) >= int(limit):
+            break
+    return out
 
 
 def resolve_target_poi_from_pool(pool, poi_name, pick_poi_match):
@@ -478,14 +521,11 @@ def _assess_add_target_confidence(pool, poi_name, pick_poi_match, day_plans=None
 
     # Product rule: one-word add input should always be treated as low confidence.
     if len(token_words) == 1 and token:
-        top = _top_candidate_names_for_query(candidates, poi_name, limit=8, exclude_keys=exclude)
-        if not top:
-            top = [str((x or {}).get("name") or "").strip() for x in _google_top_matches(poi_name, limit=8)]
-            top = [x for x in top if x]
+        top = _google_top_candidate_names_for_query(poi_name, limit=8, exclude_keys=exclude)
         return {"level": "low", "candidates": top}
 
     if is_generic:
-        top = _top_candidate_names_for_query(candidates, poi_name, limit=8, exclude_keys=exclude)
+        top = _google_top_candidate_names_for_query(poi_name, limit=8, exclude_keys=exclude)
         return {"level": "low", "candidates": top}
 
     google_matches = _google_top_matches(poi_name, limit=5)
@@ -521,7 +561,7 @@ def _assess_add_target_confidence(pool, poi_name, pick_poi_match, day_plans=None
             return {"level": "medium", "candidate": ext}
 
     # L3: broad/ambiguous -> top candidates + retype
-    return {"level": "low", "candidates": _top_candidate_names_for_query(candidates, poi_name, limit=8, exclude_keys=exclude)}
+    return {"level": "low", "candidates": _google_top_candidate_names_for_query(poi_name, limit=8, exclude_keys=exclude)}
 
 
 def preparse_add_candidate_gate(parsed, pool, day_plans, pick_poi_match):
@@ -529,13 +569,22 @@ def preparse_add_candidate_gate(parsed, pool, day_plans, pick_poi_match):
     if str(parsed.get("intent") or "").strip().lower() != "add_poi":
         return parsed
     constraints = parsed.get("constraints") if isinstance(parsed.get("constraints"), dict) else {}
-    if bool(constraints.get("candidate_selected")):
+    candidate_selected = bool(constraints.get("candidate_selected"))
+    selected_from_clar = bool(constraints.get("candidate_selected_from_clarification"))
+    # Never trust free-form parser output for candidate_selected.
+    # Only skip confidence gate when selection came from explicit clarification choice.
+    if candidate_selected and selected_from_clar:
         return parsed
     poi_name = str(parsed.get("poi_name") or "").strip()
     if not poi_name:
         return parsed
     ctype = str(parsed.get("clarification_type") or "").strip()
-    if ctype in ("choose_replace_target_poi", "reenter_add_poi_name"):
+    if ctype in (
+        "choose_replace_target_poi",
+        "reenter_add_poi_name",
+        "confirm_add_candidate_yes_no",
+        "choose_add_candidate_from_list",
+    ):
         return parsed
 
     conf = _assess_add_target_confidence(pool or [], poi_name, pick_poi_match, day_plans=day_plans)
@@ -587,7 +636,9 @@ def execute_add_must_visit(
 
     constraints = parsed.get("constraints") if isinstance(parsed.get("constraints"), dict) else {}
     effective_poi_name = str((constraints or {}).get("confirmed_poi_name") or poi_name or "").strip()
-    force_selected = bool((constraints or {}).get("candidate_selected"))
+    force_selected = bool((constraints or {}).get("candidate_selected")) and bool(
+        (constraints or {}).get("candidate_selected_from_clarification")
+    )
     if not force_selected:
         conf = _assess_add_target_confidence(pool, effective_poi_name, pick_poi_match, day_plans=day_plans)
         level = conf.get("level")

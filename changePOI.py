@@ -799,7 +799,10 @@ def register_change_poi_routes(app):
                 else:
                     _clear_dialog_state(user_id, trip_id)
                 return _resp_parsed(trip_id, parsed)
-            return _resp_parsed(trip_id, p)
+            # User input does not match current pending clarification options.
+            # Treat it as a fresh request so resumed-history edits behave the
+            # same as new-session edits (avoid stale pending state hijacking).
+            _clear_dialog_state(user_id, trip_id)
 
         active = _get_active_itinerary_for_trip(trip_id)
         context = _build_itinerary_parse_context((active.content_json or {}).get("day_plans") if active and isinstance(active.content_json, dict) else [])
