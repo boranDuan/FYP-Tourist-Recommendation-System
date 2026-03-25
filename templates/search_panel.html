@@ -1189,20 +1189,20 @@ async function handleFavoriteToggle(isChecked, placeId, place) {
       rating: place.rating,
       types: place.types,
       photos: place.photos ? place.photos.map(p => {
-        // Persist stable image source: prefer photo_reference, fallback to direct URL.
+        // Prefer stable reference; fallback to current photo URL for extraction.
         let photoRef = null;
         let photoUrl = null;
         if (typeof p === 'object' && p) {
           if (p.photo_reference) {
             photoRef = String(p.photo_reference);
           }
-          if (typeof p.getUrl === 'function') {
+          if (!photoRef && typeof p.getUrl === 'function') {
             try {
               photoUrl = p.getUrl({ maxWidth: 400, maxHeight: 260 });
             } catch (_) {
               photoUrl = null;
             }
-          } else if (p.url) {
+          } else if (!photoRef && p.url) {
             photoUrl = String(p.url);
           }
         }

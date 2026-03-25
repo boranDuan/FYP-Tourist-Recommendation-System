@@ -8,6 +8,7 @@ import json
 import webbrowser
 import math
 import copy
+from urllib.parse import urlparse, parse_qs
 from preference_matching import (
     calculate_poi_score,
     calculate_final_score_with_popularity,
@@ -187,6 +188,46 @@ def guest_mode():
 
 # ========== 收藏功能 API ==========
 
+def _extract_photo_reference(value):
+    if not value:
+        return None
+    if isinstance(value, dict):
+        ref = value.get("photo_reference")
+        if ref:
+            return str(ref).strip() or None
+        url = value.get("url")
+        if isinstance(url, str):
+            value = url
+        else:
+            return None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        if s.startswith("http://") or s.startswith("https://"):
+            try:
+                parsed = urlparse(s)
+                q = parse_qs(parsed.query)
+                ref = (q.get("photoreference") or [None])[0]
+                return str(ref).strip() if ref else None
+            except Exception:
+                return None
+        return s
+    return None
+
+
+def _normalize_favorite_place_data(place_data):
+    pd = copy.deepcopy(place_data) if isinstance(place_data, dict) else {}
+    photos = pd.get("photos")
+    normalized = []
+    if isinstance(photos, list):
+        for p in photos:
+            ref = _extract_photo_reference(p)
+            if ref:
+                normalized.append({"photo_reference": ref})
+    pd["photos"] = normalized
+    return pd
+
 @app.route("/api/favorites", methods=["POST"])
 def add_favorite():
     """添加收藏"""
@@ -197,7 +238,7 @@ def add_favorite():
     data = request.get_json()
     place_id = data.get('place_id', '').strip()
     place_name = data.get('place_name', '').strip()
-    place_data = data.get('place_data')  # 完整的 Google Places 数据（可选）
+    place_data = _normalize_favorite_place_data(data.get('place_data'))  # 完整的 Google Places 数据（可选）
     
     if not place_id or not place_name:
         return jsonify({'success': False, 'message': 'place_id and place_name are required'}), 400
@@ -265,9 +306,14 @@ def get_favorites():
     
     try:
         favorites = Favorite.query.filter_by(user_id=user_id).order_by(Favorite.created_at.desc()).all()
+        payload = []
+        for f in favorites:
+            item = f.to_dict()
+            item['place_data'] = _normalize_favorite_place_data(item.get('place_data'))
+            payload.append(item)
         return jsonify({
             'success': True,
-            'favorites': [f.to_dict() for f in favorites]
+            'favorites': payload
         }), 200
     except Exception as e:
         return jsonify({'success': False, 'message': 'Failed to get favorites: ' + str(e)}), 500
@@ -1369,7 +1415,7 @@ def sync_favorites():
         for fav in favorites:
             place_id = fav.get('place_id', '').strip()
             place_name = fav.get('place_name', '').strip()
-            place_data = fav.get('place_data')
+            place_data = _normalize_favorite_place_data(fav.get('place_data'))
             
             if not place_id or not place_name:
                 continue

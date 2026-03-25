@@ -132,6 +132,22 @@ function _favoritePhotoUrlFromRef(photoRef) {
     : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}`;
 }
 
+function _extractPhotoRefFromAny(value) {
+  if (!value) return null;
+  if (typeof value === 'object') {
+    if (value.photo_reference) return String(value.photo_reference);
+    if (value.url) return _extractPhotoRefFromUrl(value.url);
+    return null;
+  }
+  if (typeof value === 'string') {
+    const s = String(value).trim();
+    if (!s) return null;
+    if (/^https?:\/\//i.test(s)) return _extractPhotoRefFromUrl(s);
+    return s;
+  }
+  return null;
+}
+
 function _extractPhotoRefFromUrl(url) {
   try {
     const u = new URL(String(url || ''));
@@ -178,27 +194,43 @@ function hydrateFavoriteCardPhotos(container, attempt = 0, forceRefresh = false)
 
     if (favoritePhotoRefCache.has(placeId)) {
       const cachedRef = favoritePhotoRefCache.get(placeId);
-      if (cachedRef) {
+      if (!cachedRef) {
+        favoritePhotoRefCache.delete(placeId);
+      } else {
         if (!existingImg || !existingRef || forceRefresh || existingRef !== cachedRef) {
           const cachedUrl = _favoritePhotoUrlFromRef(cachedRef);
           _applyFavoriteCardPhoto(card, placeName, cachedUrl);
         }
+        return;
       }
-      return;
     }
 
     svc.getDetails(
       { placeId, fields: ['photos'] },
       (place, status) => {
         if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
-          favoritePhotoRefCache.set(placeId, null);
+          favoritePhotoRefCache.delete(placeId);
           return;
         }
         const first = Array.isArray(place.photos) && place.photos.length ? place.photos[0] : null;
-        const photoRef = first && first.photo_reference ? String(first.photo_reference) : null;
-        const photoUrl = first && typeof first.getUrl === 'function'
-          ? first.getUrl({ maxWidth: 400, maxHeight: 260 })
-          : (photoRef ? _favoritePhotoUrlFromRef(photoRef) : null);
+        let photoRef = first && first.photo_reference ? String(first.photo_reference) : null;
+        let photoUrl = null;
+        if (!photoRef && first && typeof first.getUrl === 'function') {
+          try {
+            const tempUrl = String(first.getUrl({ maxWidth: 400, maxHeight: 260 }) || '');
+            const extractedRef = _extractPhotoRefFromUrl(tempUrl);
+            if (extractedRef) {
+              photoRef = extractedRef;
+              photoUrl = _favoritePhotoUrlFromRef(extractedRef);
+            } else {
+              photoUrl = tempUrl || null;
+            }
+          } catch (_) {
+            photoUrl = null;
+          }
+        } else if (photoRef) {
+          photoUrl = _favoritePhotoUrlFromRef(photoRef);
+        }
         favoritePhotoRefCache.set(placeId, photoRef);
         if (photoUrl) _applyFavoriteCardPhoto(card, placeName, photoUrl);
       }
@@ -225,41 +257,11 @@ function createFavoriteCard(favorite, index) {
       ? CONFIG.GOOGLE_MAPS_API_KEY
       : '';
     processedPhotos = placeData.photos.map(p => {
-      // Prefer photo_reference for stable URLs across panel reloads.
-      if (typeof p === 'object' && p && p.photo_reference) {
-        const ref = String(p.photo_reference);
-        return apiKey
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
-          : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
-      }
-      // Direct URL saved from Places Photo object (may be temporary).
-      if (typeof p === 'object' && p && p.url) {
-        const s = String(p.url);
-        const ref = _extractPhotoRefFromUrl(s);
-        if (ref) {
-          return apiKey
-            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
-            : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
-        }
-        return s;
-      }
-      // String can be full URL or plain photo_reference.
-      if (typeof p === 'string') {
-        const s = String(p);
-        if (/^https?:\/\//i.test(s)) {
-          const ref = _extractPhotoRefFromUrl(s);
-          if (ref) {
-            return apiKey
-              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
-              : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
-          }
-          return s;
-        }
-        return apiKey
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${s}&key=${apiKey}`
-          : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${s}`;
-      }
-      return null;
+      const ref = _extractPhotoRefFromAny(p);
+      if (!ref) return null;
+      return apiKey
+        ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
+        : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
     }).filter(Boolean);
   }
   

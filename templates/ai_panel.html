@@ -210,6 +210,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     });
   }
 
+  function _closeItineraryEditMode() {
+    const lockingBlock = currentEditSessionBlock;
+    _lockEditSessionBlockInteractions(lockingBlock);
+    _setItineraryEditMode(false);
+  }
+
   function _setEditModeChoiceInputLock(locked) {
     editModeChoiceInputLocked = !!locked;
     const shouldLock = isItineraryEditMode && editModeChoiceInputLocked;
@@ -1614,7 +1620,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       appendMessage('assistant', guestHint);
       chatHistory.push({ role: 'assistant', content: guestHint });
       _appendGuestHistoryRecord({ type: 'text', role: 'assistant', content: guestHint });
-      _setItineraryEditMode(false);
+      _closeItineraryEditMode();
       _clearGuidedEditTransientState();
       _appendVersionFollowupMenu(localResult.version);
       return;
@@ -1665,7 +1671,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           content: prefix,
           day_plans: itineraryDayPlansState,
         });
-        _setItineraryEditMode(false);
+        _closeItineraryEditMode();
         _clearGuidedEditTransientState();
         _appendVersionFollowupMenu(displayV, { persistHistory: true });
         return;
@@ -2641,7 +2647,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const silentSync = !!(options && options.silentSync);
     const showEditMenu = !!(options && options.showEditMenu);
     _runWithoutUiPersistence(function() {
-      _setItineraryEditMode(false);
+      _closeItineraryEditMode();
       _clearGuidedEditTransientState();
     });
     const savedUiSnapshot = _loadTripUiSnapshot(tripId);
@@ -2811,7 +2817,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const id = Number(tripId);
     if (!(Number.isFinite(id) && id > 0)) return;
     _runWithoutUiPersistence(function() {
-      _setItineraryEditMode(false);
+      _closeItineraryEditMode();
       activeTripId = id;
       guidedEditAction = null;
       guidedAddContext = null;
@@ -3147,9 +3153,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const placeholderWrap = appendMessage('assistant', '', true);
     const normalizedRaw = String(raw || '').trim().toLowerCase();
     if (isItineraryEditMode && (normalizedRaw === 'cancel' || normalizedRaw === 'exit')) {
-      const lockingBlock = currentEditSessionBlock;
-      _lockEditSessionBlockInteractions(lockingBlock);
-      _setItineraryEditMode(false);
+      _closeItineraryEditMode();
       _clearGuidedEditTransientState();
       _resetWrapToDefaultAssistantStyle(placeholderWrap);
       const msg = 'Itinerary modify canceled. If you still need changes, you can continue.';
@@ -3321,7 +3325,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
                   day_plans: itineraryDayPlansState,
                 });
               }
-              _setItineraryEditMode(false);
+              _closeItineraryEditMode();
               _clearGuidedEditTransientState();
               _appendVersionFollowupMenu(displayV, { persistHistory: true });
               return;
@@ -3420,6 +3424,16 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     if (cancelBtn) {
       e.preventDefault();
       e.stopPropagation();
+      const ownerBlock = cancelBtn.closest('.ai-edit-session-block');
+      if (
+        !isItineraryEditMode ||
+        !ownerBlock ||
+        ownerBlock !== currentEditSessionBlock ||
+        ownerBlock.dataset.sessionLocked === '1' ||
+        cancelBtn.disabled
+      ) {
+        return;
+      }
       inputEl.value = 'cancel';
       sendMessage();
       return;
