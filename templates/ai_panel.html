@@ -106,16 +106,6 @@
             </select>
           </div>
 
-          <div class="q-field">
-            <label class="q-label">6. What time do you usually prefer to start your day?</label>
-            <div class="q-budget-row q-start-time-row">
-              <select name="start_time_unit" id="q-start-time-unit" class="q-input q-select q-budget-unit q-start-time-unit">
-                <option value="morning">Morning (9:30–10:30)</option>
-                <option value="late_morning">Late morning (10:30–12:00)</option>
-                <option value="afternoon">Afternoon (12:00–14:00)</option>
-              </select>
-            </div>
-          </div>
         </section>
 
 
@@ -151,6 +141,9 @@
   let localPreviewVersion = 1;
   let versionDisplayOffset = 0;
   let latestVersionMenuId = null;
+  let awaitingEditClarification = false;
+  let pendingAddDayChoiceParsed = null;
+  let pendingEditSlot = null; // { intent, slot, prompt, parsed_base }
   const poiOpenTimeCache = new Map();
   const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
   const GUEST_PENDING_TRIP_KEY = 'trs_guest_pending_trip_questionnaire_v1';
@@ -687,7 +680,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const list = Array.isArray(dayOptions) ? dayOptions.filter(Boolean) : [];
     if (!list.length) return '<div>Could not detect available days. Please type the target day manually.</div>';
     return (
-      '<div>Which day would you like to add it to?</div>' +
+      '<div>Which day would you like to add it to? (please choose day)</div>' +
       '<div class="ai-edit-choice-row">' +
       list.map(function(dayNum) {
         return '<button type="button" class="ai-guided-action-btn" data-guided-add-day="' + escapeHtml(String(dayNum)) + '">Day ' +
@@ -696,6 +689,53 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       }).join('') +
       '</div>'
     );
+  }
+
+  function _setPendingAddDaySlot(poiName, parsedBase, promptText) {
+    const base = Object.assign({}, parsedBase || {});
+    base.intent = 'add_poi';
+    base.poi_name = String(poiName || '').trim();
+    base.constraints = Object.assign({}, base.constraints || {}, { add_mode: 'append' });
+    pendingEditSlot = {
+      intent: 'add_poi',
+      slot: 'day',
+      prompt: String(promptText || 'Which day would you like to add it to? (please choose day)'),
+      parsed_base: base
+    };
+  }
+
+  function _setPendingAddPoiSlot(promptText) {
+    pendingEditSlot = {
+      intent: 'add_poi',
+      slot: 'poi_name',
+      prompt: String(promptText || 'Which POI would you like to add?'),
+      parsed_base: {
+        intent: 'add_poi',
+        constraints: { add_mode: 'append', nearby: false, same_type: null, avoid_type: null }
+      }
+    };
+  }
+
+  function _clearPendingEditSlot() {
+    pendingEditSlot = null;
+  }
+
+  function _maybeRenderDayClarificationFallback(question, parsed) {
+    const q = String(question || '').trim().toLowerCase();
+    const looksLikeDayQuestion =
+      q.includes('which day') && q.includes('add');
+    if (!looksLikeDayQuestion) return null;
+    if (parsed && typeof parsed === 'object' && String(parsed.intent || '') === 'add_poi') {
+      pendingAddDayChoiceParsed = Object.assign({}, parsed);
+      _setPendingAddDaySlot(parsed.poi_name, parsed, question || 'Which day would you like to add it to? (please choose day)');
+    }
+    const dayNums = (itineraryDayPlansState || [])
+      .map(dp => Number(dp?.day))
+      .filter(n => Number.isFinite(n) && n > 0);
+    const uniqueDayNums = Array.from(new Set(dayNums));
+    if (!uniqueDayNums.length) return null;
+    const html = _renderGuidedAddDayChoices(uniqueDayNums);
+    return html;
   }
 
   function _renderGuidedRemoveDayChoices(dayOptions) {
@@ -1125,6 +1165,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         guidedAddContext = { mode: 'custom', poi_name: null };
         guidedEditAction = 'add_poi_custom';
         const q = _guidedActionPrompt('add_poi_custom');
+        _setPendingAddPoiSlot(q);
         appendMessage('assistant', q);
         chatHistory.push({ role: 'assistant', content: q });
         _appendConversationText('assistant', q);
@@ -1144,6 +1185,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         guidedAddContext = { mode: 'custom', poi_name: null };
         guidedEditAction = 'add_poi_custom';
         const q = _guidedActionPrompt('add_poi_custom');
+        _setPendingAddPoiSlot(q);
         appendMessage('assistant', q);
         chatHistory.push({ role: 'assistant', content: q });
         _appendConversationText('assistant', q);
@@ -1166,7 +1208,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         const dayWrap = appendMessage('assistant', '', false, true);
         setBubbleHtmlContent(dayWrap, _renderGuidedAddDayChoices(uniqueDayNums));
         bindGuidedAddDayButtons(dayWrap);
-        const q = 'Which day would you like to add it to?';
+        const q = 'Which day would you like to add it to? (please choose day)';
+        _setPendingAddDaySlot(poiName, {
+          intent: 'add_poi',
+          poi_name: poiName,
+          constraints: { add_mode: 'append', nearby: false, same_type: null, avoid_type: null }
+        }, q);
         chatHistory.push({ role: 'assistant', content: q });
         _appendConversationText('assistant', q);
       });
@@ -1182,20 +1229,27 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         if (wrap.dataset.choiceLocked === '1') return;
         _lockChoiceButtons(wrap, '[data-guided-add-day]');
         const dayNum = Number(this.dataset.guidedAddDay);
-        const poiName = String(guidedAddContext?.poi_name || '').trim();
+        const poiName = String(
+          guidedAddContext?.poi_name ||
+          pendingAddDayChoiceParsed?.poi_name ||
+          ''
+        ).trim();
         if (!Number.isFinite(dayNum) || dayNum <= 0 || !poiName) return;
         _appendSelection('Day ' + String(dayNum));
+        const baseConstraints = (pendingAddDayChoiceParsed && typeof pendingAddDayChoiceParsed.constraints === 'object')
+          ? Object.assign({}, pendingAddDayChoiceParsed.constraints)
+          : {};
         const parsed = {
           intent: 'add_poi',
           day: dayNum,
           poi_name: poiName,
           target_day: null,
-          constraints: {
+          constraints: Object.assign({}, baseConstraints, {
             add_mode: 'append',
             nearby: false,
             same_type: null,
             avoid_type: null
-          },
+          }),
           confidence: 1,
           needs_clarification: false,
           clarification_question: null,
@@ -1203,6 +1257,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           clarification_options: null
         };
         guidedAddContext = null;
+        pendingAddDayChoiceParsed = null;
+        _clearPendingEditSlot();
         guidedEditAction = null;
         await _applyParsedEditFromGuided(parsed);
       });
@@ -2110,14 +2166,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       allergyDetail.value = '';
     }
 
-    const startTimeUnit = document.getElementById('q-start-time-unit');
-    const startTimeValue = document.getElementById('q-start-time-value');
-    if (startTimeUnit && startTimeValue) {
-      const isCustom = startTimeUnit.value === 'custom';
-      startTimeValue.disabled = !isCustom;
-      if (!isCustom) startTimeValue.value = '';
-    }
-
     const errEl = document.getElementById('q-form-error');
     if (errEl) {
       errEl.style.display = 'none';
@@ -2142,8 +2190,96 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
     let outbound = raw;
     let guidedParsed = null;
+    let pendingSlotAction = null;
+    let forceEditFlow = false;
     const hasActiveTrip = Number.isFinite(activeTripId) && activeTripId > 0;
-    const hadGuidedAction = (((Number.isFinite(activeTripId) && activeTripId > 0) || (Array.isArray(itineraryDayPlansState) && itineraryDayPlansState.length > 0)) && !!guidedEditAction);
+    const hasItineraryContext = hasActiveTrip || (Array.isArray(itineraryDayPlansState) && itineraryDayPlansState.length > 0);
+    const hadGuidedAction = (hasItineraryContext && !!guidedEditAction);
+
+    // Fallback: if pending slot was lost, recover it from the last assistant question.
+    if (!pendingEditSlot && hasItineraryContext) {
+      const lastAssistantMsg = [...chatHistory].reverse().find(function(m) { return m && m.role === 'assistant' && m.content; });
+      const lastAssistantText = String(lastAssistantMsg?.content || '').toLowerCase();
+      if (lastAssistantText.includes('which poi would you like to add')) {
+        _setPendingAddPoiSlot('Which POI would you like to add?');
+      } else if (lastAssistantText.includes('which day would you like to add')) {
+        const fallbackPoi = String(guidedAddContext?.poi_name || pendingAddDayChoiceParsed?.poi_name || '').trim();
+        if (fallbackPoi) {
+          _setPendingAddDaySlot(
+            fallbackPoi,
+            {
+              intent: 'add_poi',
+              poi_name: fallbackPoi,
+              constraints: { add_mode: 'append', nearby: false, same_type: null, avoid_type: null }
+            },
+            'Which day would you like to add it to? (please choose day)'
+          );
+        }
+      }
+    }
+
+    // 1) Highest priority: resolve pending edit slot with current user reply.
+    if (!guidedParsed && pendingEditSlot && pendingEditSlot.intent === 'add_poi') {
+      if (pendingEditSlot.slot === 'poi_name') {
+        const poiName = String(raw || '').trim();
+        if (poiName) {
+          if (hasItineraryContext) {
+            // Any itinerary context (guest/login/history): route POI answer to parse-edit so confidence gate runs (Top8/Did-you-mean).
+            outbound = 'add ' + poiName + ' to itinerary';
+            forceEditFlow = true;
+            guidedAddContext = { mode: 'custom', poi_name: poiName };
+            pendingAddDayChoiceParsed = null;
+            _clearPendingEditSlot();
+            guidedEditAction = null;
+            awaitingEditClarification = true;
+          } else {
+            guidedAddContext = { mode: 'custom', poi_name: poiName };
+            _setPendingAddDaySlot(
+              poiName,
+              {
+                intent: 'add_poi',
+                poi_name: poiName,
+                constraints: { add_mode: 'append', nearby: false, same_type: null, avoid_type: null }
+              },
+              'Which day would you like to add it to? (please choose day)'
+            );
+            pendingSlotAction = { kind: 'ask_add_day', poi_name: poiName };
+            guidedEditAction = null;
+            awaitingEditClarification = false;
+          }
+        }
+      } else if (pendingEditSlot.slot === 'day') {
+        let dayNum = NaN;
+        const m = String(raw || '').match(/\bday\s*(\d+)\b/i) || String(raw || '').match(/^\s*(\d+)\s*$/);
+        if (m && m[1]) dayNum = Number(m[1]);
+        const dayExists = (itineraryDayPlansState || []).some(dp => Number(dp?.day) === dayNum);
+        if (Number.isFinite(dayNum) && dayNum > 0 && dayExists) {
+          const base = Object.assign({}, pendingEditSlot.parsed_base || {});
+          guidedParsed = Object.assign({}, base, {
+            intent: 'add_poi',
+            day: dayNum,
+            poi_name: String(base.poi_name || '').trim(),
+            target_day: null,
+            constraints: Object.assign({}, base.constraints || {}, {
+              add_mode: 'append',
+              nearby: false,
+              same_type: null,
+              avoid_type: null
+            }),
+            confidence: 1,
+            needs_clarification: false,
+            clarification_question: null,
+            clarification_type: null,
+            clarification_options: null
+          });
+          guidedAddContext = null;
+          pendingAddDayChoiceParsed = null;
+          _clearPendingEditSlot();
+          guidedEditAction = null;
+          awaitingEditClarification = false;
+        }
+      }
+    }
     if (hadGuidedAction) {
       const action = guidedEditAction;
       guidedEditAction = null;
@@ -2174,6 +2310,47 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       else outbound = raw;
     }
 
+    // When waiting for add-day selection, treat plain numeric reply as edit answer (not free chat).
+    if (!guidedParsed && hasItineraryContext) {
+      const pendingPoi = String(guidedAddContext?.poi_name || '').trim();
+      const fallbackPoi = String(pendingAddDayChoiceParsed?.poi_name || '').trim();
+      const candidatePoi = pendingPoi || fallbackPoi;
+      if (candidatePoi) {
+        let dayNum = NaN;
+        const m = String(raw || '').match(/\bday\s*(\d+)\b/i) || String(raw || '').match(/^\s*(\d+)\s*$/);
+        if (m && m[1]) dayNum = Number(m[1]);
+        const dayExists = (itineraryDayPlansState || []).some(dp => Number(dp?.day) === dayNum);
+        if (Number.isFinite(dayNum) && dayNum > 0 && dayExists) {
+          const baseConstraints = (pendingAddDayChoiceParsed && typeof pendingAddDayChoiceParsed.constraints === 'object')
+            ? Object.assign({}, pendingAddDayChoiceParsed.constraints)
+            : {};
+          guidedParsed = {
+            intent: 'add_poi',
+            day: dayNum,
+            poi_name: candidatePoi,
+            target_day: null,
+            constraints: Object.assign({}, baseConstraints, {
+              add_mode: 'append',
+              nearby: false,
+              same_type: null,
+              avoid_type: null
+            }),
+            confidence: 1,
+            needs_clarification: false,
+            clarification_question: null,
+            clarification_type: null,
+            clarification_options: null
+          };
+          guidedAddContext = null;
+          pendingAddDayChoiceParsed = null;
+          guidedEditAction = null;
+          awaitingEditClarification = false;
+        }
+      }
+    }
+
+    const shouldUseEditFlow = hasItineraryContext && (forceEditFlow || hadGuidedAction || awaitingEditClarification || !!guidedParsed || !!pendingEditSlot);
+
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
@@ -2183,9 +2360,46 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
     const placeholderWrap = appendMessage('assistant', '', true);
 
+    if (pendingSlotAction && pendingSlotAction.kind === 'ask_add_day') {
+      const dayNums = (itineraryDayPlansState || [])
+        .map(dp => Number(dp?.day))
+        .filter(n => Number.isFinite(n) && n > 0);
+      const uniqueDayNums = Array.from(new Set(dayNums));
+      setBubbleHtmlContent(placeholderWrap, _renderGuidedAddDayChoices(uniqueDayNums));
+      bindGuidedAddDayButtons(placeholderWrap);
+      const q = 'Which day would you like to add it to? (please choose day)';
+      chatHistory.push({ role: 'assistant', content: q });
+      _appendConversationText('assistant', q);
+      return;
+    }
+
+    // Pending slot exists but user answer is invalid: re-prompt slot (never fall back to free chat).
+    if (!guidedParsed && pendingEditSlot) {
+      if (pendingEditSlot.intent === 'add_poi' && pendingEditSlot.slot === 'day') {
+        const dayNums = (itineraryDayPlansState || [])
+          .map(dp => Number(dp?.day))
+          .filter(n => Number.isFinite(n) && n > 0);
+        const uniqueDayNums = Array.from(new Set(dayNums));
+        const html = '<div>Please choose a valid day from the options below.</div>' + _renderGuidedAddDayChoices(uniqueDayNums);
+        setBubbleHtmlContent(placeholderWrap, html);
+        bindGuidedAddDayButtons(placeholderWrap);
+        const q = String(pendingEditSlot.prompt || 'Which day would you like to add it to? (please choose day)');
+        chatHistory.push({ role: 'assistant', content: q });
+        _appendConversationText('assistant', q);
+        return;
+      }
+    }
+
     try {
-      // Only enter edit flow when user selected an edit action from Version menu.
-      if (hasActiveTrip && hadGuidedAction) {
+      // Enter edit flow when user selected an edit action or when resolving pending clarification.
+      if (shouldUseEditFlow) {
+        if (!hasActiveTrip && !guidedParsed) {
+          const msg = 'Cannot apply itinerary edits right now. Please reopen this itinerary from your history and try again.';
+          setBubbleContent(placeholderWrap, msg);
+          chatHistory.push({ role: 'assistant', content: msg });
+          _appendConversationText('assistant', msg);
+          return;
+        }
         if (guidedParsed) {
           await _applyParsedEditFromGuided(guidedParsed, placeholderWrap);
           return;
@@ -2210,8 +2424,19 @@ This will help me recommend attractions and generate a realistic day-by-day plan
               setBubbleHtmlContent(placeholderWrap, html);
               bindEditChoiceButtons(placeholderWrap);
             } else {
-              setBubbleContent(placeholderWrap, q);
+              if (String(parsed?.clarification_type || '') === 'reenter_add_poi_name') {
+                _setPendingAddPoiSlot(q);
+              }
+              const dayFallbackHtml = _maybeRenderDayClarificationFallback(q, parsed);
+              if (dayFallbackHtml) {
+                setBubbleHtmlContent(placeholderWrap, dayFallbackHtml);
+                bindGuidedAddDayButtons(placeholderWrap);
+              } else {
+                pendingAddDayChoiceParsed = null;
+                setBubbleContent(placeholderWrap, q);
+              }
             }
+            awaitingEditClarification = true;
             chatHistory.push({ role: 'assistant', content: q });
             _appendConversationText('assistant', q);
             return;
@@ -2227,6 +2452,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
             const applyData = await applyRes.json();
 
             if (applyData && applyData.success && applyData.applied) {
+              awaitingEditClarification = false;
               itineraryDayPlansState = Array.isArray(applyData.day_plans) ? applyData.day_plans : [];
               const appliedDay = Number(applyData?.applied_action?.day) || 1;
               const removedName = applyData?.applied_action?.removed_poi || 'target POI';
@@ -2273,13 +2499,27 @@ This will help me recommend attractions and generate a realistic day-by-day plan
                 setBubbleHtmlContent(placeholderWrap, html);
                 bindEditChoiceButtons(placeholderWrap);
               } else {
-                setBubbleContent(placeholderWrap, q);
+                if (String((applyData.parsed || parsed || {})?.clarification_type || '') === 'reenter_add_poi_name') {
+                  _setPendingAddPoiSlot(q);
+                }
+                const dayFallbackHtml = _maybeRenderDayClarificationFallback(q, applyData.parsed || parsed || {});
+                if (dayFallbackHtml) {
+                  setBubbleHtmlContent(placeholderWrap, dayFallbackHtml);
+                  bindGuidedAddDayButtons(placeholderWrap);
+                } else {
+                  pendingAddDayChoiceParsed = null;
+                  setBubbleContent(placeholderWrap, q);
+                }
               }
+              awaitingEditClarification = true;
               chatHistory.push({ role: 'assistant', content: q });
               _appendConversationText('assistant', q);
               return;
             }
             if (applyData && applyData.message) {
+              awaitingEditClarification = false;
+              pendingAddDayChoiceParsed = null;
+              _clearPendingEditSlot();
               setBubbleContent(placeholderWrap, applyData.message);
               if (_shouldShowVersionFollowupAfterApplyMessage(applyData.message)) {
                 _appendVersionFollowupMenu(_currentDisplayVersionForFollowup(), { persistHistory: true, hideVersion: true });
@@ -2304,8 +2544,11 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       const data = await res.json();
 
       if (data.success && data.reply) {
+        awaitingEditClarification = false;
+        pendingAddDayChoiceParsed = null;
+        _clearPendingEditSlot();
         let replyText = data.reply;
-        if (hasActiveTrip) {
+        if (hasItineraryContext) {
           replyText = _simplifyNormalChatReply(replyText);
           const hintText = _editMenuHintText();
           const savedText = String(replyText || '').trim() + '\n\n' + hintText;
@@ -2374,6 +2617,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       localPreviewVersion = 1;
       versionDisplayOffset = 0;
       latestVersionMenuId = null;
+      awaitingEditClarification = false;
+      pendingAddDayChoiceParsed = null;
+      _clearPendingEditSlot();
       guestTripHistory = [];
       _clearGuestPendingTripQuestionnaire();
       guidedEditAction = null;
@@ -2421,20 +2667,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         if (!this.checked) allergyDetail.value = '';
       });
     }
-  })();
-
-  // 问卷：Start time 单位选择 - Custom 时启用时间输入
-  (function() {
-    const unit = document.getElementById('q-start-time-unit');
-    const value = document.getElementById('q-start-time-value');
-    if (!unit || !value) return;
-    const update = () => {
-      const isCustom = unit.value === 'custom';
-      value.disabled = !isCustom;
-      if (!isCustom) value.value = '';
-    };
-    unit.addEventListener('change', update);
-    update();
   })();
 
   // 问卷：Q5 兴趣排序（点击排序，再点击取消）
@@ -2495,8 +2727,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const visitDateEnd = document.getElementById('q-visit-date-end')?.value;
     const interestsOther = document.getElementById('q-interests-other')?.value?.trim();
     const pace = document.getElementById('q-pace')?.value;
-    const startTimeUnit = document.getElementById('q-start-time-unit')?.value;
-    const startTimeVal = document.getElementById('q-start-time-value')?.value;
 
     if (!groupType) errors.push('Q1: Please select how you will be traveling.');
     if (!visitDate) errors.push('Q2: Please select your visit start date.');
@@ -2507,7 +2737,6 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     if (visitDate && visitDateEnd && visitDateEnd < visitDate) errors.push('Q2: End date cannot be earlier than start date.');
     if (interestsRankOrder.length === 0 && !interestsOther) errors.push('Q5: Please select at least one type of place or specify in Other.');
     if (!pace) errors.push('Q8: Please select your travel pace.');
-    if (!startTimeUnit || (startTimeUnit === 'custom' && !startTimeVal)) errors.push('Q9: Please select or enter your preferred start time.');
 
     if (errors.length > 0) {
       errEl.textContent = errors.join(' ');

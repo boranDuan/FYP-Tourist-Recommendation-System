@@ -718,32 +718,8 @@ function createMarkersForPlaces(places) {
           return;
         }
 
-        if (placeDetails.photos && placeDetails.photos.length > 0) {
-          // 有照片：只在 Search panel 显示名片（不显示 InfoWindow）
-          handlePlaceSelected(placeDetails.place_id, placeDetails.name || 'Unknown Place', true);
-        } else {
-          // 没有照片：只显示轻量 InfoWindow，并在鼠标移出后自动关闭
-          const infoWindow = new google.maps.InfoWindow({
-            content: `
-              <div style="padding: 8px; max-width: 250px;">
-                <strong style="font-size: 14px; display: block; margin-bottom: 4px;">${placeDetails.name || 'Unknown Place'}</strong>
-                ${placeDetails.formatted_address ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">${placeDetails.formatted_address}</div>` : ''}
-                ${placeDetails.types && placeDetails.types.length > 0 ? `<div style="font-size: 11px; color: #999; margin-top: 4px;">${placeDetails.types[0].replace(/_/g, ' ')}</div>` : ''}
-              </div>
-            `
-          });
-
-          infoWindow.open(map, marker);
-          if (typeof attachInfoWindowAutoClose === 'function') {
-            attachInfoWindowAutoClose(infoWindow, marker);
-          }
-
-          // 同时清空 Search panel 名片区域，避免残留旧的名片
-          const detailsEl = document.getElementById('place-details');
-          if (detailsEl) {
-            detailsEl.innerHTML = '';
-          }
-        }
+        // Always show Search panel card, even when photos are unavailable.
+        handlePlaceSelected(placeDetails.place_id, placeDetails.name || 'Unknown Place', true);
       });
     });
 
@@ -870,6 +846,12 @@ function handlePlaceSelected(placeId, description, skipHistory = false) {
   const suggestionsEl = document.getElementById('search-suggestions');
   const detailsEl = document.getElementById('place-details');
   const input = document.getElementById('search-input');
+
+  // Always switch back to Search panel when selecting a place from map.
+  document.body.classList.add('collapsed');
+  document.body.classList.remove('show-favorites', 'show-my-trips', 'show-ai-panel', 'show-settings');
+  const collapseBtn = document.getElementById('collapseBtn');
+  if (collapseBtn) collapseBtn.textContent = '←';
 
   if (suggestionsEl) {
     suggestionsEl.innerHTML = '';
@@ -1207,15 +1189,27 @@ async function handleFavoriteToggle(isChecked, placeId, place) {
       rating: place.rating,
       types: place.types,
       photos: place.photos ? place.photos.map(p => {
-        // 提取 photo_reference
-        if (typeof p.getUrl === 'function') {
-          // Google Places Photo 对象
-          return { photo_reference: p.photo_reference || null };
-        } else if (p.photo_reference) {
-          return { photo_reference: p.photo_reference };
+        // Persist stable image source: prefer photo_reference, fallback to direct URL.
+        let photoRef = null;
+        let photoUrl = null;
+        if (typeof p === 'object' && p) {
+          if (p.photo_reference) {
+            photoRef = String(p.photo_reference);
+          }
+          if (typeof p.getUrl === 'function') {
+            try {
+              photoUrl = p.getUrl({ maxWidth: 400, maxHeight: 260 });
+            } catch (_) {
+              photoUrl = null;
+            }
+          } else if (p.url) {
+            photoUrl = String(p.url);
+          }
         }
+        if (photoRef) return { photo_reference: photoRef };
+        if (photoUrl) return { url: photoUrl };
         return null;
-      }).filter(p => p && p.photo_reference) : [],
+      }).filter(Boolean) : [],
       geometry: place.geometry ? {
         location: {
           lat: place.geometry.location.lat(),

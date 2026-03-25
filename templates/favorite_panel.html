@@ -206,17 +206,31 @@ function createFavoriteCard(favorite, index) {
   // 处理 photos：提取 photo_reference
   let processedPhotos = [];
   if (placeData.photos && Array.isArray(placeData.photos)) {
+    const apiKey = (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_MAPS_API_KEY)
+      ? CONFIG.GOOGLE_MAPS_API_KEY
+      : '';
     processedPhotos = placeData.photos.map(p => {
-      // 如果是对象且有 photo_reference
-      if (typeof p === 'object' && p.photo_reference) {
-        return p.photo_reference;
+      // Direct URL saved from Places Photo object.
+      if (typeof p === 'object' && p && p.url) {
+        return String(p.url);
       }
-      // 如果已经是字符串（photo_reference）
+      // Object photo_reference -> build Google photo URL.
+      if (typeof p === 'object' && p && p.photo_reference) {
+        const ref = String(p.photo_reference);
+        return apiKey
+          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}&key=${apiKey}`
+          : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${ref}`;
+      }
+      // String can be full URL or plain photo_reference.
       if (typeof p === 'string') {
-        return p;
+        const s = String(p);
+        if (/^https?:\/\//i.test(s)) return s;
+        return apiKey
+          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${s}&key=${apiKey}`
+          : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${s}`;
       }
       return null;
-    }).filter(p => p !== null);
+    }).filter(Boolean);
   }
   
   const name = favorite.place_name || placeData.name || 'Unknown Place';
@@ -236,15 +250,7 @@ function createFavoriteCard(favorite, index) {
     imageHtml = `
       <div class="favorite-card-image-container">
         <div class="favorite-card-image-wrapper" data-photo-index="0">
-          ${processedPhotos.map((photoRef, photoIndex) => {
-            // 构建图片 URL（使用 photo_reference）
-            // 使用全局 CONFIG 获取 API key
-            const apiKey = (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_MAPS_API_KEY) 
-              ? CONFIG.GOOGLE_MAPS_API_KEY 
-              : '';
-            const photoUrl = apiKey
-              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
-              : `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}`;
+          ${processedPhotos.map((photoUrl, photoIndex) => {
             return `<img src="${photoUrl}" alt="${name}" class="favorite-card-image ${photoIndex === 0 ? 'active' : ''}" data-index="${photoIndex}">`;
           }).join('')}
         </div>

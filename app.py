@@ -385,8 +385,6 @@ def validate_questionnaire_data(data):
     interests = data.get("interests") or []
     avoid = data.get("avoid") or []
     pace = (data.get("pace") or "").strip()
-    start_time_unit = (data.get("start_time_unit") or "").strip()
-    start_time_value = (data.get("start_time_value") or "").strip()
     food_preference = data.get("food_preference") or []
 
     if not group_type:
@@ -412,10 +410,6 @@ def validate_questionnaire_data(data):
             errors.append("Q5: Please select at least one type of place or specify in Other.")
     if not pace:
         errors.append("Q8: Please select your travel pace.")
-    if not start_time_unit:
-        errors.append("Q9: Please select your preferred start time.")
-    if start_time_unit == "custom" and not (start_time_value and str(start_time_value).strip()):
-        errors.append("Q9: Please enter your custom start time.")
     # Q10 optional: no required validation.
 
     return (len(errors) == 0, errors)
@@ -463,9 +457,7 @@ def trip_create():
     visit_date = parse_date(data.get("visit_date"))
     visit_date_end = parse_date(data.get("visit_date_end"))
 
-    st_unit = (data.get("start_time_unit") or "").strip()
-    st_val = str(data.get("start_time_value") or "").strip()
-    start_time = f"custom:{st_val}" if st_unit == "custom" and st_val else (st_unit if st_unit else None)
+    start_time = None
 
     def to_int(x):
         if x is None:

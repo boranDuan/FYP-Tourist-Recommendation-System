@@ -358,19 +358,8 @@ function initMap(){
           title: place.name || 'Unknown Place'
         });
 
-        // 根据是否有 photos / rating 决定显示方式
-        if (place.photos && place.photos.length > 0) {
-          // 有 photos：显示完整信息卡片（Search panel 名片）
-          handlePlaceSelected(place.place_id, place.name || 'Unknown Place', true);
-        } else {
-          // 没有 photos：只显示轻量 InfoWindow，并清空 Search panel 名片区域
-          showLightweightInfoWindow(place, searchMarker);
-
-          const detailsEl = document.getElementById('place-details');
-          if (detailsEl) {
-            detailsEl.innerHTML = '';
-          }
-        }
+        // Always show Search panel card from map POI click.
+        handlePlaceSelected(place.place_id, place.name || 'Unknown Place', true);
       }
     });
   });
