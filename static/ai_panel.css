@@ -167,9 +167,26 @@ body.show-ai-panel #ai-panel {
 }
 
 .ai-msg-wrap.ai-edit-mode-message.ai-msg-assistant .ai-msg-bubble.ai-edit-mode-assistant {
-  background: #e4f0e8;
-  color: #173e2e;
-  border: 1px solid #adcbb9;
+  background: #dceadf;
+  color: #15231a;
+  border: none;
+}
+
+.ai-msg-wrap.ai-edit-mode-message.ai-msg-assistant .ai-msg-bubble.ai-edit-mode-assistant.ai-has-choice-rows {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.ai-msg-wrap.ai-edit-mode-message.ai-msg-assistant .ai-msg-bubble.ai-edit-mode-assistant.ai-has-choice-rows .ai-msg-text-body {
+  background: #dceadf;
+  color: #15231a;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.ai-msg-wrap.ai-edit-mode-message.ai-msg-assistant .ai-msg-bubble.ai-edit-mode-assistant.ai-has-choice-rows .ai-edit-choice-row {
+  margin-top: 8px;
 }
 
 .ai-msg-wrap.ai-edit-mode-message.ai-msg-user .ai-msg-bubble.ai-edit-mode-user {
@@ -177,6 +194,7 @@ body.show-ai-panel #ai-panel {
   color: #fff;
   border: 1px solid #14532d;
 }
+
 
 .ai-edit-choice-row {
   margin-top: 10px;
@@ -187,9 +205,9 @@ body.show-ai-panel #ai-panel {
 
 .ai-edit-choice-btn,
 .ai-guided-action-btn {
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid #95C0A4;
+  background: transparent;
+  color: #1A6B37;
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 12px;
@@ -200,14 +218,29 @@ body.show-ai-panel #ai-panel {
 
 .ai-edit-choice-btn:hover,
 .ai-guided-action-btn:hover {
-  background: #dbeafe;
+  background: #E8F1E9;
 }
 
 .ai-edit-choice-btn:active,
 .ai-guided-action-btn:active {
+  background: #deebdf;
+  border-color: #7dad8f;
+  transform: translateY(1px);
+}
+
+.ai-guided-action-btn.ai-version-menu-btn {
+  border: 1px solid #93c5fd;
+  background: transparent;
+  color: #1d4ed8;
+}
+
+.ai-guided-action-btn.ai-version-menu-btn:hover {
+  background: #dbeafe;
+}
+
+.ai-guided-action-btn.ai-version-menu-btn:active {
   background: #bfdbfe;
   border-color: #60a5fa;
-  transform: translateY(1px);
 }
 
 /* Itinerary render in AI chat */

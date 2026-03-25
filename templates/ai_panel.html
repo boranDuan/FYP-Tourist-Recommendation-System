@@ -405,7 +405,37 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       text.innerHTML = contentHtml;
       bubble.appendChild(text);
     }
+    _applyEditChoiceRowPresentation(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function _applyEditChoiceRowPresentation(wrap) {
+    if (!wrap) return;
+    if (!wrap.classList.contains('ai-msg-assistant')) return;
+    const bubble = wrap.querySelector('.ai-msg-bubble');
+    if (!bubble) return;
+    bubble.classList.remove('ai-has-choice-rows');
+    const text = bubble.querySelector('.ai-msg-text');
+    if (!text) return;
+    const rows = Array.from(text.querySelectorAll(':scope > .ai-edit-choice-row'));
+    if (!rows.length) return;
+
+    const body = document.createElement('div');
+    body.className = 'ai-msg-text-body';
+    const nodes = Array.from(text.childNodes);
+    nodes.forEach(node => {
+      const isChoiceRow = node.nodeType === 1
+        && node.classList
+        && node.classList.contains('ai-edit-choice-row');
+      if (!isChoiceRow) body.appendChild(node);
+    });
+
+    text.innerHTML = '';
+    if (body.childNodes.length > 0) {
+      text.appendChild(body);
+    }
+    rows.forEach(row => text.appendChild(row));
+    bubble.classList.add('ai-has-choice-rows');
   }
 
   function _resetWrapToDefaultAssistantStyle(wrap) {
@@ -558,11 +588,11 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     return (
       introHtml +
       '<div class="ai-edit-choice-row">' +
-      '<button type="button" class="ai-guided-action-btn" data-guided-action="add_poi">Add a POI</button>' +
-      '<button type="button" class="ai-guided-action-btn" data-guided-action="remove_poi">Remove a POI</button>' +
-      '<button type="button" class="ai-guided-action-btn" data-guided-action="move_poi">Move a POI</button>' +
-      '<button type="button" class="ai-guided-action-btn" data-guided-action="replace_poi">Replace a POI</button>' +
-      '<button type="button" class="ai-guided-action-btn" data-guided-action="adjust_trip_days">Adjust trip days</button>' +
+      '<button type="button" class="ai-guided-action-btn ai-version-menu-btn" data-guided-action="add_poi">Add a POI</button>' +
+      '<button type="button" class="ai-guided-action-btn ai-version-menu-btn" data-guided-action="remove_poi">Remove a POI</button>' +
+      '<button type="button" class="ai-guided-action-btn ai-version-menu-btn" data-guided-action="move_poi">Move a POI</button>' +
+      '<button type="button" class="ai-guided-action-btn ai-version-menu-btn" data-guided-action="replace_poi">Replace a POI</button>' +
+      '<button type="button" class="ai-guided-action-btn ai-version-menu-btn" data-guided-action="adjust_trip_days">Adjust trip days</button>' +
       '</div>'
     );
   }
