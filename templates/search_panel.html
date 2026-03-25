@@ -118,6 +118,24 @@ const DUBLIN_BOUNDS = { // 都柏林范围限制
   east: -6.1,
   west: -6.4
 };
+const DUBLIN_CENTER = { lat: 53.3498, lng: -6.2603 };
+const DUBLIN_BIAS_RADIUS_METERS = 30000;
+
+function _buildAutocompleteRequest(inputText) {
+  const input = String(inputText || '').trim();
+  const request = { input };
+  if (window.google && google.maps && google.maps.LatLngBounds) {
+    request.bounds = new google.maps.LatLngBounds(
+      new google.maps.LatLng(DUBLIN_BOUNDS.south, DUBLIN_BOUNDS.west),
+      new google.maps.LatLng(DUBLIN_BOUNDS.north, DUBLIN_BOUNDS.east)
+    );
+  }
+  // Keep results in Ireland first, and bias around Dublin center.
+  request.componentRestrictions = { country: 'ie' };
+  request.location = DUBLIN_CENTER;
+  request.radius = DUBLIN_BIAS_RADIUS_METERS;
+  return request;
+}
 
 // ========== Step 1: UI Filter → Google Places API Type 映射表 ==========
 // UI 名称（显示给用户） → Google Places API type（API 可以识别）
@@ -282,7 +300,7 @@ function initSearch() {
     } else {
       // 有文字时，显示自动补全结果
       if (autocompleteService) {
-        const request = { input: value };
+        const request = _buildAutocompleteRequest(value);
         autocompleteService.getPlacePredictions(request, (predictions, status) => {
           if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
             renderSuggestions(suggestionsEl, predictions);
@@ -322,8 +340,8 @@ function initSearch() {
     }
 
     autocompleteTimer = setTimeout(() => {
-      // 全世界范围搜索（不再限制在都柏林）
-      const request = { input: value };
+      // Bias suggestions to Dublin first.
+      const request = _buildAutocompleteRequest(value);
 
       autocompleteService.getPlacePredictions(request, (predictions, status) => {
         if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
