@@ -161,6 +161,7 @@ To get started, please fill out a short questionnaire about your trip preference
 This will help me recommend attractions and generate a realistic day-by-day plan.
 
 <span class="ai-questionnaire-link" role="button" tabindex="0">👉 Click the questionnaire link to begin.</span>`;
+  const EDIT_MODE_ADVICE_TEXT = 'If you want general travel advice, click Cancel or type "cancel" to exit itinerary edit mode.';
 
   function _setItineraryEditMode(enabled) {
     isItineraryEditMode = !!enabled;
@@ -566,12 +567,21 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     return out;
   }
 
+  function _withEditModeAdvice(text) {
+    const base = String(text || '').trim();
+    if (!base) return base;
+    if (!isItineraryEditMode) return base;
+    if (base.includes(EDIT_MODE_ADVICE_TEXT)) return base;
+    return base + '\n' + EDIT_MODE_ADVICE_TEXT;
+  }
+
   function _renderClarificationChoices(q, parsed, options) {
+    const displayQ = _withEditModeAdvice(q);
     const opts = Array.isArray(options) ? options.filter(Boolean) : [];
-    if (!opts.length) return '<div>' + escapeHtml(q) + '</div>';
+    if (!opts.length) return '<div>' + escapeHtml(displayQ) + '</div>';
     const parsedEscaped = escapeHtml(JSON.stringify(parsed || {}));
     return (
-      '<div>' + escapeHtml(q) + '</div>' +
+      '<div>' + escapeHtml(displayQ).replace(/\n/g, '<br>') + '</div>' +
       '<div class="ai-edit-choice-row">' +
       opts.map(function(opt) {
         return '<button type="button" class="ai-edit-choice-btn" data-choice="' +

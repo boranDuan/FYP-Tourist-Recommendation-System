@@ -136,13 +136,16 @@ body.show-ai-panel #ai-panel {
 }
 
 .ai-edit-session-hint {
-  position: relative;
   font-size: 12px;
   color: #2a5a3f;
   background: #eef8f2;
   border: 1px solid #cfe8da;
   border-radius: 8px;
-  padding: 8px 76px 8px 8px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
 }
 
 .ai-edit-session-hint code {
@@ -153,12 +156,9 @@ body.show-ai-panel #ai-panel {
 }
 
 .ai-edit-session-cancel-btn {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  border: 1px solid #9fc9b2;
-  background: #f7fcf9;
-  color: #1f5134;
+  border: 1px solid #b91c1c;
+  background: #dc2626;
+  color: #fff;
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
