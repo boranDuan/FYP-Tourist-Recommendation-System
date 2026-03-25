@@ -181,10 +181,25 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     if (currentEditSessionBlock) return currentEditSessionBlock;
     const block = document.createElement('div');
     block.className = 'ai-edit-session-block';
+    const hint = document.createElement('div');
+    hint.className = 'ai-edit-session-hint';
+    hint.innerHTML = '<span>Click Cancel or type <code>cancel</code> to cancel modify.</span>' +
+      '<button type="button" class="ai-edit-session-cancel-btn">Cancel</button>';
+    block.appendChild(hint);
     messagesEl.appendChild(block);
     currentEditSessionBlock = block;
     pendingEditSessionStart = false;
     return block;
+  }
+
+  function _lockEditSessionBlockInteractions(block) {
+    if (!block) return;
+    block.dataset.sessionLocked = '1';
+    block.querySelectorAll('button').forEach(btn => {
+      btn.disabled = true;
+      btn.style.opacity = '0.55';
+      btn.style.cursor = 'not-allowed';
+    });
   }
 
   function _clearGuidedEditTransientState() {
@@ -539,8 +554,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
   function _renderGuidedEditActions(introText) {
     const intro = String(introText || 'I can help you change your itinerary if you are not satisfied:');
+    const introHtml = intro ? ('<div>' + escapeHtml(intro) + '</div>') : '';
     return (
-      '<div>' + escapeHtml(intro) + '</div>' +
+      introHtml +
       '<div class="ai-edit-choice-row">' +
       '<button type="button" class="ai-guided-action-btn" data-guided-action="add_poi">Add a POI</button>' +
       '<button type="button" class="ai-guided-action-btn" data-guided-action="remove_poi">Remove a POI</button>' +
@@ -682,9 +698,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const hideVersion = !!(options && options.hideVersion);
     if (!hideVersion && !(Number.isFinite(v) && v >= 1)) return;
     const persistHistory = !!(options && options.persistHistory);
-    const text = hideVersion
+    const hasTextOverride = !!(options && Object.prototype.hasOwnProperty.call(options, 'introText'));
+    const text = hasTextOverride
+      ? String(options.introText || '')
+      : (hideVersion
       ? 'If you still need changes, you can continue:'
-      : ('This is your Version ' + String(v) + '. If you still need changes, you can continue:');
+      : ('This is your Version ' + String(v) + '. If you still need changes, you can continue:'));
     const menuId = _newMenuId();
     latestVersionMenuId = menuId;
     const wrap = appendMessage('assistant', '', false, true);
@@ -692,7 +711,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     wrap.dataset.menuInteractive = '1';
     setBubbleHtmlContent(wrap, _renderGuidedEditActions(text));
     bindGuidedActionButtons(wrap);
-    chatHistory.push({ role: 'assistant', content: text });
+    if (text) chatHistory.push({ role: 'assistant', content: text });
     if (persistHistory && Number.isFinite(activeTripId) && activeTripId > 0) {
       _appendTripHistoryRecord(activeTripId, {
         type: 'version_menu',
@@ -2656,13 +2675,19 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     const placeholderWrap = appendMessage('assistant', '', true);
     const normalizedRaw = String(raw || '').trim().toLowerCase();
     if (isItineraryEditMode && (normalizedRaw === 'cancel' || normalizedRaw === 'exit')) {
+      const lockingBlock = currentEditSessionBlock;
+      _lockEditSessionBlockInteractions(lockingBlock);
       _setItineraryEditMode(false);
       _clearGuidedEditTransientState();
-      const msg = 'Exited itinerary edit mode. You can continue normal chat now. Use the version menu below anytime when you want to edit again.';
+      _resetWrapToDefaultAssistantStyle(placeholderWrap);
+      const msg = 'Itinerary modify canceled. If you still need changes, you can continue.';
       setBubbleContent(placeholderWrap, msg);
       chatHistory.push({ role: 'assistant', content: msg });
       _appendConversationText('assistant', msg);
-      _appendVersionFollowupMenu(_currentDisplayVersionForFollowup(), { persistHistory: Number.isFinite(activeTripId) && activeTripId > 0 });
+      _appendVersionFollowupMenu(_currentDisplayVersionForFollowup(), {
+        persistHistory: Number.isFinite(activeTripId) && activeTripId > 0,
+        introText: ''
+      });
       return;
     }
 
@@ -2890,6 +2915,14 @@ This will help me recommend attractions and generate a realistic day-by-day plan
 
   sendBtn.addEventListener('click', sendMessage);
   messagesEl.addEventListener('click', function(e) {
+    const cancelBtn = e.target.closest('.ai-edit-session-cancel-btn');
+    if (cancelBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      inputEl.value = 'cancel';
+      sendMessage();
+      return;
+    }
     const btn = e.target.closest('.ai-jump-version-menu-btn');
     if (!btn) return;
     e.preventDefault();
