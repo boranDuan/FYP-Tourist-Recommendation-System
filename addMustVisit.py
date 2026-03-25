@@ -405,13 +405,11 @@ def execute_add_must_visit(
     target_plan["pois"] = pois
     recompute_plan_meta(target_plan)
 
-    ok, reason = append_with_constraints(target_plan, target_poi, trip.preference)
-    if not ok:
-        rollback_pois = list(target_plan.get("pois") or [])
-        rollback_pois.append(removed_obj)
-        target_plan["pois"] = rollback_pois
-        recompute_plan_meta(target_plan)
-        return {"kind": "error", "status": 400, "message": f"Failed to replace POI: {reason}"}
+    # User-requested behavior: replace flow should also ignore daily cap constraints.
+    replaced_pois = list(target_plan.get("pois") or [])
+    replaced_pois.append(target_poi)
+    target_plan["pois"] = replaced_pois
+    recompute_plan_meta(target_plan)
 
     return {
         "kind": "applied",

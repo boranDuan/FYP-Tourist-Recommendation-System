@@ -433,10 +433,8 @@ def questionnaire_validate():
 
 @app.route("/api/trip/create", methods=["POST"])
 def trip_create():
-    """根据问卷数据创建 Trip + TripPreference，需登录"""
+    """根据问卷数据创建 Trip + TripPreference；未登录则返回临时预览（不保存）。"""
     user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "message": "Please log in to save your trip."}), 401
 
     data = request.get_json() or {}
     is_valid, errors = validate_questionnaire_data(data)
@@ -485,32 +483,55 @@ def trip_create():
     interests = data.get("interests")
     interests_data = interests if isinstance(interests, dict) else {}
 
+    pref_kwargs = dict(
+        group_type=(data.get("group_type") or "").strip() or None,
+        num_people=to_int(data.get("num_people")),
+        num_children=to_int(data.get("num_children")),
+        num_seniors=to_int(data.get("num_seniors")),
+        trip_duration=None,
+        budget=budget if budget_unit else None,
+        hotel_budget=(data.get("hotel_budget_unit") or "").strip() or None,
+        hotel_preferred_area=(data.get("hotel_preferred_area") or "").strip() or None,
+        visit_date=visit_date,
+        visit_date_end=visit_date_end,
+        interests=interests_data,
+        interests_other=(data.get("interests_other") or "").strip() or None,
+        specific_places=(data.get("specific_places") or "").strip() or None,
+        pace=(data.get("pace") or "").strip() or None,
+        start_time=start_time,
+        food_preference=food_str or None,
+        dietary_needs=dietary_str or None,
+        avoid=data.get("avoid") or [],
+    )
+
+    # 未登录：允许填写问卷并生成临时 itinerary 预览，但不写入数据库。
+    if not user_id:
+        try:
+            pref = TripPreference(trip_id=0, **pref_kwargs)
+            generated = _compute_candidates_and_itinerary(pref)
+            if not generated:
+                return jsonify({
+                    "success": False,
+                    "message": "Failed to generate itinerary preview. Please try again."
+                }), 500
+            return jsonify({
+                "success": True,
+                "preview_only": True,
+                "message": "Preview generated. Please log in to save it to My Itinerary.",
+                "pois": generated.get("out", []),
+                "day_plans": generated.get("day_plans", []),
+                "daily_poi_capacity": generated.get("daily_capacity"),
+                "warnings": generated.get("warnings", []),
+            }), 200
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
+
     try:
         trip = Trip(user_id=user_id, status="active", is_saved=False)
         db.session.add(trip)
         db.session.flush()
 
-        pref = TripPreference(
-            trip_id=trip.trip_id,
-            group_type=(data.get("group_type") or "").strip() or None,
-            num_people=to_int(data.get("num_people")),
-            num_children=to_int(data.get("num_children")),
-            num_seniors=to_int(data.get("num_seniors")),
-            trip_duration=None,
-            budget=budget if budget_unit else None,
-            hotel_budget=(data.get("hotel_budget_unit") or "").strip() or None,
-            hotel_preferred_area=(data.get("hotel_preferred_area") or "").strip() or None,
-            visit_date=visit_date,
-            visit_date_end=visit_date_end,
-            interests=interests_data,
-            interests_other=(data.get("interests_other") or "").strip() or None,
-            specific_places=(data.get("specific_places") or "").strip() or None,
-            pace=(data.get("pace") or "").strip() or None,
-            start_time=start_time,
-            food_preference=food_str or None,
-            dietary_needs=dietary_str or None,
-            avoid=data.get("avoid") or [],
-        )
+        pref = TripPreference(trip_id=trip.trip_id, **pref_kwargs)
         db.session.add(pref)
         db.session.commit()
         # 问卷提交后生成首版 itinerary，并持久化到 itineraries（version=1）
@@ -1167,9 +1188,23 @@ def get_interest_ranked_pois_for_trip(trip_id):
             # 不影响主流程返回
             pass
 
+        latest_itinerary = (
+            Itinerary.query
+            .filter_by(trip_id=trip_id, is_active=True)
+            .order_by(Itinerary.version.desc())
+            .first()
+        ) or (
+            Itinerary.query
+            .filter_by(trip_id=trip_id)
+            .order_by(Itinerary.version.desc())
+            .first()
+        )
+        current_version = int(latest_itinerary.version) if latest_itinerary and latest_itinerary.version else 1
+
         return jsonify({
             "success": True,
             "trip_id": trip_id,
+            "version": current_version,
             "pois": result["out"],
             "must_visit_ids": result["must_visit_ids"],
             "google_must_visits": result.get("google_must_visits", []),
