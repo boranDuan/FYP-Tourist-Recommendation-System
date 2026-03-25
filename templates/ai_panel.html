@@ -631,6 +631,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         guestTripHistory = [];
         appendMessage('assistant', 'Login successful. Your guest itinerary has been saved to My Trip.');
         chatHistory.push({ role: 'assistant', content: 'Login successful. Your guest itinerary has been saved to My Trip.' });
+        if (typeof window.setActiveMyTripCard === 'function') {
+          window.setActiveMyTripCard(result.trip_id);
+        }
         if (typeof loadMyTrips === 'function') {
           loadMyTrips();
         }
