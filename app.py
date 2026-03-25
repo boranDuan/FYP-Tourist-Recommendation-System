@@ -1323,6 +1323,96 @@ def get_interest_ranked_pois_for_trip(trip_id):
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/api/trips/<int:trip_id>/promote-guest-session", methods=["POST"])
+def promote_guest_session_to_trip(trip_id):
+    """
+    登录后将游客本地会话（day_plans/pois）写回该 trip 的 active itinerary，
+    以保证 AI 面板与 My Trip 历史展示一致，并支持继续修改。
+    """
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "message": "Please log in first."}), 401
+
+    trip = db.session.get(Trip, trip_id)
+    if not trip:
+        return jsonify({"success": False, "message": "Trip not found."}), 404
+    if trip.user_id != user_id:
+        return jsonify({"success": False, "message": "You do not have access to this trip."}), 403
+
+    data = request.get_json() or {}
+    day_plans = data.get("day_plans")
+    if not isinstance(day_plans, list) or len(day_plans) == 0:
+        return jsonify({"success": False, "message": "day_plans is required"}), 400
+    pois = data.get("pois")
+    if not isinstance(pois, list):
+        pois = []
+    warnings = data.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    pref = trip.preference
+    trip_days = _get_trip_days(pref) if pref else len(day_plans)
+    summary = format_itinerary_summary(day_plans, trip_days)
+    daily_capacity = (
+        get_daily_poi_capacity(
+            getattr(pref, "pace", None),
+            getattr(pref, "num_children", 0) or 0,
+            getattr(pref, "num_seniors", 0) or 0,
+        )
+        if pref else None
+    )
+
+    must_visit_ids = []
+    for p in pois:
+        if not isinstance(p, dict):
+            continue
+        if str(p.get("source") or "").strip().lower() == "google":
+            pid = p.get("place_id")
+            if pid:
+                must_visit_ids.append(pid)
+
+    content_json = {
+        "pois": pois,
+        "must_visit_ids": list(dict.fromkeys(must_visit_ids)),
+        "google_must_visits": [p for p in pois if isinstance(p, dict) and str(p.get("source") or "").strip().lower() == "google"],
+        "daily_poi_capacity": daily_capacity,
+        "day_plans": day_plans,
+        "warnings": warnings,
+        "summary": summary,
+    }
+
+    try:
+        active = (
+            Itinerary.query
+            .filter_by(trip_id=trip_id, is_active=True)
+            .order_by(Itinerary.version.desc())
+            .first()
+        )
+        if not active:
+            latest = (
+                Itinerary.query
+                .filter_by(trip_id=trip_id)
+                .order_by(Itinerary.version.desc())
+                .first()
+            )
+            next_version = (latest.version + 1) if latest else 1
+            active = Itinerary(
+                trip_id=trip_id,
+                version=next_version,
+                content_json=content_json,
+                is_active=True,
+            )
+            db.session.add(active)
+        else:
+            active.content_json = content_json
+            active.generated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"success": True, "trip_id": trip_id, "version": int(active.version or 1)}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # ========== AI 对话 API（OpenAI GPT-4.1 mini）==========
 
 init_change_poi(

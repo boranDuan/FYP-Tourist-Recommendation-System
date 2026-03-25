@@ -449,7 +449,10 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       return;
     }
     const pending = _loadGuestPendingTripState() || {};
-    _saveGuestPendingTripState(Object.assign({}, pending, { ui_state: state }));
+    _saveGuestPendingTripState(Object.assign({}, pending, {
+      ui_state: state,
+      ui_snapshot: _captureUiSnapshot()
+    }));
   }
 
   function _runWithoutUiPersistence(fn) {
@@ -571,7 +574,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       day_plans: itineraryDayPlansState,
       version: localPreviewVersion,
       pois: guestCandidatePoolState,
-      ui_state: _captureUiState()
+      ui_state: _captureUiState(),
+      ui_snapshot: _captureUiSnapshot()
     }));
   }
 
@@ -591,6 +595,22 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       });
       const result = await res.json();
       if (res.ok && result && result.success && result.trip_id) {
+        const pendingDayPlans = Array.isArray(pending.day_plans) ? pending.day_plans : [];
+        const pendingPois = Array.isArray(pending.pois) ? pending.pois : [];
+        const pendingWarnings = Array.isArray(pending.warnings) ? pending.warnings : [];
+        if (pendingDayPlans.length > 0) {
+          try {
+            await fetch('/api/trips/' + encodeURIComponent(result.trip_id) + '/promote-guest-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                day_plans: pendingDayPlans,
+                pois: pendingPois,
+                warnings: pendingWarnings
+              })
+            });
+          } catch (_) {}
+        }
         const migratedHistoryRaw = Array.isArray(pending.history) ? pending.history : [];
         const migratedHistory = migratedHistoryRaw.filter(rec => {
           if (!rec || typeof rec !== 'object') return false;
@@ -600,6 +620,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         });
         if (migratedHistory.length > 0) {
           _saveTripHistory(result.trip_id, migratedHistory);
+        }
+        if (pending.ui_state && typeof pending.ui_state === 'object') {
+          _saveTripUiState(result.trip_id, pending.ui_state);
+        }
+        if (pending.ui_snapshot && typeof pending.ui_snapshot === 'object') {
+          _saveTripUiSnapshot(result.trip_id, pending.ui_snapshot);
         }
         _clearGuestPendingTripQuestionnaire();
         guestTripHistory = [];
@@ -1249,6 +1275,31 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       }).join('') +
       '</div>'
     );
+  }
+
+  function _renderReplayInteractivePrompt(content) {
+    const text = String(content || '').trim();
+    if (!text) return null;
+    const dayNums = (itineraryDayPlansState || [])
+      .map(dp => Number(dp?.day))
+      .filter(n => Number.isFinite(n) && n > 0);
+    const uniqueDayNums = Array.from(new Set(dayNums));
+    if (text === 'How would you like to add a POI?') {
+      return { html: _renderGuidedAddSourceChoices(), binder: 'add_source' };
+    }
+    if (text === 'Which day do you want to remove a POI from?') {
+      return { html: _renderGuidedRemoveDayChoices(uniqueDayNums), binder: 'remove_day' };
+    }
+    if (text === 'Which day do you want to move a POI from?') {
+      return { html: _renderGuidedMoveSourceDayChoices(uniqueDayNums), binder: 'move_source_day' };
+    }
+    if (text === 'Which day do you want to pick the source POI from?') {
+      return { html: _renderGuidedReplaceSourceDayChoices(uniqueDayNums), binder: 'replace_source_day' };
+    }
+    if (text === 'Which day do you want to adjust POI numbers?') {
+      return { html: _renderGuidedAdjustPoiNumberDayChoices(uniqueDayNums), binder: 'adjust_poi_numbers_day' };
+    }
+    return null;
   }
 
   function _lockChoiceButtons(wrap, selector) {
@@ -2724,12 +2775,26 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           const role = rec.role || 'assistant';
           const content = rec.content || '';
           if (role === 'assistant') {
-            const parsed = _splitEditHintFromAssistantText(content);
-            if (parsed.hasHint) {
-              const html = _renderReplyWithEditHint(parsed.body, replayCurrentMenuId || latestVersionMenuId || '');
-              appendMessage(role, html, false, true);
+            const isLastRecord = idx === (history.length - 1);
+            const replayInteractive = isLastRecord ? _renderReplayInteractivePrompt(content) : null;
+            if (replayInteractive && replayInteractive.html) {
+              _setItineraryEditMode(true);
+              _markNextEditPromptAsSessionStart();
+              const replayWrap = appendMessage(role, '', false, true);
+              setBubbleHtmlContent(replayWrap, replayInteractive.html);
+              if (replayInteractive.binder === 'add_source') bindGuidedAddSourceButtons(replayWrap);
+              else if (replayInteractive.binder === 'remove_day') bindGuidedRemoveDayButtons(replayWrap);
+              else if (replayInteractive.binder === 'move_source_day') bindGuidedMoveSourceDayButtons(replayWrap);
+              else if (replayInteractive.binder === 'replace_source_day') bindGuidedReplaceSourceDayButtons(replayWrap);
+              else if (replayInteractive.binder === 'adjust_poi_numbers_day') bindGuidedAdjustPoiNumberDayButtons(replayWrap);
             } else {
-              appendMessage(role, content, false, false);
+              const parsed = _splitEditHintFromAssistantText(content);
+              if (parsed.hasHint) {
+                const html = _renderReplyWithEditHint(parsed.body, replayCurrentMenuId || latestVersionMenuId || '');
+                appendMessage(role, html, false, true);
+              } else {
+                appendMessage(role, content, false, false);
+              }
             }
           } else {
             appendMessage(role, content, false, false);
