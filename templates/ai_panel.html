@@ -148,6 +148,7 @@
   let activeEditMenuAction = null;
   let currentEditSessionBlock = null;
   let pendingEditSessionStart = false;
+  let editModeChoiceInputLocked = false;
   const poiOpenTimeCache = new Map();
   const TRIP_HISTORY_KEY_PREFIX = 'trs_trip_history_';
   const GUEST_PENDING_TRIP_KEY = 'trs_guest_pending_trip_questionnaire_v1';
@@ -161,7 +162,7 @@ To get started, please fill out a short questionnaire about your trip preference
 This will help me recommend attractions and generate a realistic day-by-day plan.
 
 <span class="ai-questionnaire-link" role="button" tabindex="0">👉 Click the questionnaire link to begin.</span>`;
-  const EDIT_MODE_ADVICE_TEXT = 'If you want general travel advice, click Cancel or type "cancel" to exit itinerary edit mode.';
+  const EDIT_MODE_ADVICE_TEXT = 'Click Cancel to exit itinerary edit mode.';
 
   function _setItineraryEditMode(enabled) {
     isItineraryEditMode = !!enabled;
@@ -169,6 +170,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     if (!isItineraryEditMode) {
       currentEditSessionBlock = null;
       pendingEditSessionStart = false;
+      _setEditModeChoiceInputLock(false);
     }
   }
 
@@ -184,7 +186,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     block.className = 'ai-edit-session-block';
     const hint = document.createElement('div');
     hint.className = 'ai-edit-session-hint';
-    hint.innerHTML = '<span>Click Cancel or type <code>cancel</code> to cancel modify.</span>' +
+    hint.innerHTML = '<span>Click Cancel to cancel modify.</span>' +
       '<button type="button" class="ai-edit-session-cancel-btn">Cancel</button>';
     block.appendChild(hint);
     messagesEl.appendChild(block);
@@ -201,6 +203,28 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       btn.style.opacity = '0.55';
       btn.style.cursor = 'not-allowed';
     });
+  }
+
+  function _setEditModeChoiceInputLock(locked) {
+    editModeChoiceInputLocked = !!locked;
+    const shouldLock = isItineraryEditMode && editModeChoiceInputLocked;
+    inputEl.disabled = shouldLock;
+    if (sendBtn) sendBtn.disabled = shouldLock;
+    if (shouldLock) {
+      inputEl.setAttribute('placeholder', 'Please choose using the buttons above.');
+    } else {
+      inputEl.setAttribute('placeholder', 'Ask for travel recommendations...');
+    }
+  }
+
+  function _syncEditInputLockFromAssistantWrap(wrap) {
+    if (!isItineraryEditMode) {
+      _setEditModeChoiceInputLock(false);
+      return;
+    }
+    if (!wrap || !wrap.classList || !wrap.classList.contains('ai-msg-assistant')) return;
+    const hasChoiceButtons = !!wrap.querySelector('.ai-guided-action-btn:not(.ai-edit-session-cancel-btn):not(.ai-jump-version-menu-btn), .ai-edit-choice-btn');
+    _setEditModeChoiceInputLock(hasChoiceButtons);
   }
 
   function _clearGuidedEditTransientState() {
@@ -244,6 +268,9 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       parentEl = _ensureEditSessionBlock();
     }
     parentEl.appendChild(wrap);
+    if (role === 'assistant' && !isPlaceholder) {
+      _syncEditInputLockFromAssistantWrap(wrap);
+    }
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return wrap;
   }
@@ -394,6 +421,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       text.textContent = content;
       bubble.appendChild(text);
     }
+    _syncEditInputLockFromAssistantWrap(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
@@ -407,6 +435,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       bubble.appendChild(text);
     }
     _applyEditChoiceRowPresentation(wrap);
+    _syncEditInputLockFromAssistantWrap(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
@@ -584,7 +613,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       '<div>' + escapeHtml(displayQ).replace(/\n/g, '<br>') + '</div>' +
       '<div class="ai-edit-choice-row">' +
       opts.map(function(opt) {
-        return '<button type="button" class="ai-edit-choice-btn" data-choice="' +
+        const extraClass = (String(opt) === 'type_again') ? ' ai-edit-choice-type-again' : '';
+        return '<button type="button" class="ai-edit-choice-btn' + extraClass + '" data-choice="' +
           escapeHtml(String(opt)) +
           '" data-parsed="' + parsedEscaped + '">' + escapeHtml(_choiceLabel(opt)) + '</button>';
       }).join('') +

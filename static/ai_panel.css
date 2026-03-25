@@ -148,6 +148,11 @@ body.show-ai-panel #ai-panel {
   gap: 8px;
 }
 
+.ai-edit-session-hint span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ai-edit-session-hint code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   background: #e6f1eb;
@@ -241,6 +246,16 @@ body.show-ai-panel #ai-panel {
 .ai-guided-action-btn.ai-version-menu-btn:active {
   background: #bfdbfe;
   border-color: #60a5fa;
+}
+
+.ai-edit-choice-btn.ai-edit-choice-type-again {
+  background: #dceadf;
+  color: #15231a;
+  border: 1px solid #8fa89a;
+}
+
+.ai-edit-choice-btn.ai-edit-choice-type-again:hover {
+  background: #d1e2d6;
 }
 
 /* Itinerary render in AI chat */
@@ -508,6 +523,14 @@ body.show-ai-panel #ai-panel {
   border-color: #0d6efd;
 }
 
+.ai-chat-input:disabled {
+  background: #e5e7eb;
+  color: #6b7280;
+  border-color: #d1d5db;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .ai-chat-send {
   flex-shrink: 0;
   width: 44px;
@@ -525,6 +548,12 @@ body.show-ai-panel #ai-panel {
 
 .ai-chat-send:hover {
   background: #0b5ed7;
+}
+
+.ai-chat-send:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .ai-chat-send .material-symbols-outlined {
