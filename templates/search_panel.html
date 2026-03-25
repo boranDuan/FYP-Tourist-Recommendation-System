@@ -42,16 +42,7 @@
     <div class="filter" data-filter-key="food" data-base-label="Food & Drinks">
       <button type="button" class="filter-btn">Food &amp; Drinks</button>
       <div class="filter-dropdown">
-        <div class="filter-option has-sub">
-          <span data-label="Restaurant">Restaurant</span>
-          <div class="filter-submenu">
-            <div class="filter-option" data-label="Chinese restaurant">Chinese</div>
-            <div class="filter-option" data-label="Irish restaurant">Irish</div>
-            <div class="filter-option" data-label="Italian restaurant">Italian</div>
-            <div class="filter-option" data-label="Japanese restaurant">Japanese</div>
-            <div class="filter-option" data-label="Other restaurant">Other</div>
-          </div>
-        </div>
+        <div class="filter-option" data-label="Restaurant">Restaurant</div>
         <div class="filter-option" data-label="Cafe">Cafe</div>
         <div class="filter-option" data-label="Pub">Pub</div>
       </div>
@@ -69,11 +60,6 @@
     </div>
     <div class="filter" data-filter-key="accommodation" data-base-label="Accommodation">
       <button type="button" class="filter-btn">Accommodation</button>
-      <div class="filter-dropdown">
-        <div class="filter-option" data-label="Hotel">Hotel</div>
-        <div class="filter-option" data-label="Apartment">Apartment</div>
-        <div class="filter-option" data-label="Hostel">Hostel</div>
-      </div>
     </div>
     <div class="filter" data-filter-key="shopping" data-base-label="Shopping">
       <button type="button" class="filter-btn">Shopping</button>
@@ -151,11 +137,6 @@ const filterTypeMapping = {
   // Food & Drinks 类别
   'Food & Drinks': ['restaurant', 'cafe', 'bar', 'food', 'meal_takeaway'],
   'Restaurant': ['restaurant', 'food'],
-  'Chinese restaurant': ['restaurant'], // 子类别，需要客户端过滤
-  'Irish restaurant': ['restaurant'],
-  'Italian restaurant': ['restaurant'],
-  'Japanese restaurant': ['restaurant'],
-  'Other restaurant': ['restaurant'],
   'Cafe': ['cafe', 'bakery'],
   'Pub': ['bar', 'night_club'],
   
@@ -171,9 +152,6 @@ const filterTypeMapping = {
   
   // Accommodation 类别
   'Accommodation': ['lodging'],
-  'Hotel': ['lodging'],
-  'Apartment': ['lodging'],
-  'Hostel': ['lodging'],
   
   // Shopping 类别
   'Shopping': ['shopping_mall', 'store', 'supermarket'],
