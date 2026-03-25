@@ -125,6 +125,25 @@ body.show-ai-panel #ai-panel {
   white-space: pre-wrap;
 }
 
+.ai-chat-messages.ai-chat-edit-mode {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.ai-msg-wrap.ai-edit-mode-message.ai-msg-assistant .ai-msg-bubble.ai-edit-mode-assistant {
+  background: #ecfdf3;
+  color: #14532d;
+  border: 1px solid #86efac;
+}
+
+.ai-msg-wrap.ai-edit-mode-message.ai-msg-user .ai-msg-bubble.ai-edit-mode-user {
+  background: #166534;
+  color: #fff;
+  border: 1px solid #14532d;
+}
+
 .ai-edit-choice-row {
   margin-top: 10px;
   display: flex;

@@ -564,6 +564,18 @@ def _assess_add_target_confidence(pool, poi_name, pick_poi_match, day_plans=None
     return {"level": "low", "candidates": _google_top_candidate_names_for_query(poi_name, limit=8, exclude_keys=exclude)}
 
 
+def assess_add_confidence_for_query(poi_name, day_plans=None):
+    def _noop_pick(_pois, _target_name):
+        return -1, -1
+
+    return _assess_add_target_confidence(
+        [],
+        poi_name,
+        _noop_pick,
+        day_plans=day_plans,
+    )
+
+
 def preparse_add_candidate_gate(parsed, pool, day_plans, pick_poi_match):
     parsed = parsed if isinstance(parsed, dict) else {}
     if str(parsed.get("intent") or "").strip().lower() != "add_poi":

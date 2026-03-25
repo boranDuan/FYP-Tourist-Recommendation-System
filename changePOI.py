@@ -5,6 +5,7 @@ import re
 
 from flask import jsonify, request, session
 from addMustVisit import (
+    assess_add_confidence_for_query as _add_assess_add_confidence_for_query,
     apply_choice_to_parsed as _add_apply_choice_to_parsed,
     enforce_add_parse_rules as _add_enforce_parse_rules,
     execute_add_must_visit as _execute_add_must_visit,
@@ -729,6 +730,18 @@ def _replace_one_poi_in_plan(plan, day_plans, pool, pref, removed_poi, constrain
 
 
 def register_change_poi_routes(app):
+    @app.route("/api/itinerary/add-confidence", methods=["POST"])
+    def assess_itinerary_add_confidence():
+        data = request.get_json() or {}
+        poi_name = (data.get("poi_name") or "").strip()
+        if not poi_name:
+            return _resp_error("poi_name is required", status=400)
+        day_plans = data.get("day_plans")
+        if not isinstance(day_plans, list):
+            day_plans = []
+        confidence = _add_assess_add_confidence_for_query(poi_name, day_plans=day_plans)
+        return jsonify({"success": True, "confidence": confidence}), 200
+
     @app.route("/api/trips/<int:trip_id>/itinerary/parse-edit", methods=["POST"])
     def parse_itinerary_edit(trip_id):
         user_id = session.get("user_id")
