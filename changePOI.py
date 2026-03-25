@@ -26,6 +26,7 @@ from movePOI import (
 )
 from replacePOI import execute_replace_poi as _execute_replace_poi
 from adjust_day_plans import execute_adjust_day_plans as _execute_adjust_day_plans
+from adjust_day_plans import execute_adjust_poi_numbers as _execute_adjust_poi_numbers
 
 
 _CTX = {}
@@ -200,7 +201,7 @@ def _get_active_itinerary_for_trip(trip_id):
 def _enforce_parse_clarification_rules(parsed, user_text):
     parsed = parsed if isinstance(parsed, dict) else {}
     intent = str(parsed.get("intent") or "").strip()
-    edit_intents = {"remove_poi", "replace_poi", "move_poi", "add_poi", "adjust_day_plans"}
+    edit_intents = {"remove_poi", "replace_poi", "move_poi", "add_poi", "adjust_day_plans", "adjust_poi_numbers"}
 
     # For non-edit chat (e.g. "thanks"), never force itinerary clarification prompts.
     if intent not in edit_intents:
@@ -220,7 +221,7 @@ def _enforce_parse_clarification_rules(parsed, user_text):
             "I am not fully sure I understood. Please tell me the day number and exact POI name."
         )
 
-    if intent in edit_intents and intent != "adjust_day_plans":
+    if intent in edit_intents and intent not in ("adjust_day_plans", "adjust_poi_numbers"):
         poi_name = str(parsed.get("poi_name") or "").strip()
         if not poi_name:
             parsed["needs_clarification"] = True
@@ -888,16 +889,16 @@ def register_change_poi_routes(app):
             )
 
         intent = (parsed.get("intent") or "").strip()
-        if intent not in ("remove_poi", "replace_poi", "move_poi", "add_poi", "adjust_day_plans"):
+        if intent not in ("remove_poi", "replace_poi", "move_poi", "add_poi", "adjust_day_plans", "adjust_poi_numbers"):
             return _resp_error(
-                f"Unsupported intent for MVP apply-edit: {intent or 'unknown'} (currently supports remove_poi/replace_poi/move_poi/add_poi/adjust_day_plans)",
+                f"Unsupported intent for MVP apply-edit: {intent or 'unknown'} (currently supports remove_poi/replace_poi/move_poi/add_poi/adjust_day_plans/adjust_poi_numbers)",
                 status=400,
                 parsed=parsed,
             )
 
         day = parsed.get("day")
         poi_name = (parsed.get("poi_name") or "").strip()
-        if intent != "adjust_day_plans" and not poi_name:
+        if intent not in ("adjust_day_plans", "adjust_poi_numbers") and not poi_name:
             return _resp_error(
                 "poi_name is required for remove_poi/replace_poi/move_poi/add_poi",
                 status=400,
@@ -996,6 +997,26 @@ def register_change_poi_routes(app):
             applied_day = int(adjust_result.get("applied_day") or 1)
             removed = None
             added = []
+            move_to_day = adjust_result.get("target_day")
+        elif intent == "adjust_poi_numbers":
+            adjust_result = _execute_adjust_poi_numbers(
+                parsed=parsed,
+                content=content,
+                trip=trip,
+                compute_candidates_and_itinerary=compute_candidates_and_itinerary,
+                recompute_plan_meta=_recompute_plan_meta,
+            )
+            if adjust_result.get("kind") == "error":
+                return _resp_error(
+                    adjust_result.get("message") or "Failed to adjust POI numbers",
+                    status=int(adjust_result.get("status") or 400),
+                    parsed=parsed,
+                )
+            day_plans = list(adjust_result.get("day_plans") or [])
+            content["day_plans"] = day_plans
+            applied_day = int(adjust_result.get("applied_day") or 1)
+            removed = None
+            added = list(adjust_result.get("added") or [])
             move_to_day = adjust_result.get("target_day")
         elif intent == "remove_poi":
             remove_result = _execute_remove_poi(
@@ -1143,7 +1164,7 @@ def register_change_poi_routes(app):
                 applied_day = replace_result.get("applied_day")
                 added = list(replace_result.get("added") or [])
                 move_to_day = replace_result.get("target_day") or move_to_day
-        if intent not in ("add_poi", "adjust_day_plans") and not removed:
+        if intent not in ("add_poi", "adjust_day_plans", "adjust_poi_numbers") and not removed:
             return _resp_error(f"POI not found in target day: {poi_name}", status=404)
 
         trip_days = get_trip_days(trip.preference) if trip.preference else len(day_plans)
@@ -1164,7 +1185,7 @@ def register_change_poi_routes(app):
                     if intent in ("remove_poi", "replace_poi", "move_poi")
                     else None
                 ),
-                "target_day": move_to_day if intent in ("move_poi", "replace_poi", "adjust_day_plans") else None,
+                "target_day": move_to_day if intent in ("move_poi", "replace_poi", "adjust_day_plans", "adjust_poi_numbers") else None,
                 "added_pois": [x.get("name") for x in added if isinstance(x, dict)],
             },
             day_plans=day_plans,

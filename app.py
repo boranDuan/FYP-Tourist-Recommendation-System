@@ -754,6 +754,74 @@ def _compute_trip_center(google_must_visits, pois):
     return DUBLIN_CENTER, "dublin_fallback"
 
 
+def _poi_unique_key_for_dayplan(poi):
+    if not isinstance(poi, dict):
+        return ""
+    place_id = str(poi.get("place_id") or "").strip()
+    if place_id:
+        return "place:" + place_id
+    poi_id = poi.get("poi_id")
+    if poi_id is not None:
+        return "poi:" + str(poi_id)
+    name = str(poi.get("name") or "").strip().lower()
+    if name:
+        return "name:" + name
+    return ""
+
+
+def _ensure_min_two_pois_per_day(day_plans, fallback_pool):
+    plans = day_plans if isinstance(day_plans, list) else []
+    if not plans:
+        return
+
+    def _pois_of(plan):
+        pois = plan.get("pois")
+        if not isinstance(pois, list):
+            pois = []
+            plan["pois"] = pois
+        return pois
+
+    donors = [p for p in plans if len(_pois_of(p)) > 2]
+    recipients = [p for p in plans if len(_pois_of(p)) < 2]
+    while donors and recipients:
+        donor = donors[0]
+        recipient = recipients[0]
+        donor_pois = _pois_of(donor)
+        recipient_pois = _pois_of(recipient)
+        if len(donor_pois) <= 2:
+            donors.pop(0)
+            continue
+        moved = donor_pois.pop()
+        recipient_pois.append(moved)
+        if len(recipient_pois) >= 2:
+            recipients.pop(0)
+        if len(donor_pois) <= 2:
+            donors.pop(0)
+
+    used = set()
+    for p in plans:
+        for poi in _pois_of(p):
+            k = _poi_unique_key_for_dayplan(poi)
+            if k:
+                used.add(k)
+    fallback = list(fallback_pool or [])
+    for plan in plans:
+        pois = _pois_of(plan)
+        while len(pois) < 2:
+            pick = None
+            while fallback and pick is None:
+                cand = fallback.pop(0)
+                k = _poi_unique_key_for_dayplan(cand)
+                if k and k in used:
+                    continue
+                pick = cand
+                if k:
+                    used.add(k)
+            if pick is None:
+                break
+            pois.append(pick)
+
+
 def _compute_candidates_and_itinerary(pref, limit=200):
     """
     根据 TripPreference 计算候选 POI 与分天行程。
@@ -934,6 +1002,7 @@ def _compute_candidates_and_itinerary(pref, limit=200):
     use_v4 = os.getenv("USE_V4_ALLOCATION", "true").lower() in ("1", "true", "yes")
     allocator = allocate_pois_to_days_v4_popularity_first if use_v4 else allocate_pois_to_days_v3_with_must_visit
     day_plans, warnings = allocator(final_pois, google_place_ids, pref, trip_days)
+    _ensure_min_two_pois_per_day(day_plans, final_pois)
     summary = format_itinerary_summary(day_plans, trip_days)
 
     return {
