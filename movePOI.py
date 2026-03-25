@@ -32,6 +32,17 @@ def execute_move_poi(
     pick_poi_match,
     recompute_plan_meta,
 ):
+    def _cannot_move_last_poi(plan):
+        pois = list((plan or {}).get("pois") or [])
+        if len(pois) <= 1:
+            d = (plan or {}).get("day")
+            return {
+                "kind": "error",
+                "status": 400,
+                "message": f"Day {d} has only one POI, so it cannot be moved.",
+            }
+        return None
+
     source_plan = None
     if day is not None:
         source_plan = find_day_plan(day_plans, day)
@@ -67,6 +78,10 @@ def execute_move_poi(
                 "question": f"I found multiple possible POIs matching '{poi_name}' in days {days}. Please tell me the day number or full POI name.",
                 "parsed": parsed,
             }
+
+    guard = _cannot_move_last_poi(source_plan)
+    if guard:
+        return guard
 
     if target_day is None:
         return {"kind": "clarify", "question": "Which target day do you want to move it to?", "parsed": parsed}

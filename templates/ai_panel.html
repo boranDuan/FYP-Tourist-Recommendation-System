@@ -1389,6 +1389,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       const plan = _findPlanByDay(day);
       if (!plan || !poiName) return { ok: false, message: 'Please choose a valid day and POI.' };
       const pois = Array.isArray(plan.pois) ? plan.pois : [];
+      if (pois.length <= 1) return { ok: false, message: 'This day has only one POI, so it cannot be removed.' };
       const idx = pois.findIndex(p => _normName(p?.name) === _normName(poiName));
       if (idx < 0) return { ok: false, message: 'POI not found in selected day.' };
       const removed = pois.splice(idx, 1)[0];
@@ -1405,6 +1406,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       const toPlan = _findPlanByDay(targetDay);
       if (!fromPlan || !toPlan || !poiName) return { ok: false, message: 'Please choose valid source/target day and POI.' };
       const fromPois = Array.isArray(fromPlan.pois) ? fromPlan.pois : [];
+      if (fromPois.length <= 1) return { ok: false, message: 'This day has only one POI, so it cannot be moved.' };
       const idx = fromPois.findIndex(p => _normName(p?.name) === _normName(poiName));
       if (idx < 0) return { ok: false, message: 'POI not found in source day.' };
       const moved = fromPois.splice(idx, 1)[0];
@@ -1908,6 +1910,21 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         _appendSelection('Day ' + String(dayNum));
         const plan = (itineraryDayPlansState || []).find(dp => Number(dp?.day) === dayNum) || null;
         const poiNames = (plan?.pois || []).map(p => String(p?.name || '').trim()).filter(Boolean);
+        if (poiNames.length <= 1) {
+          const retryDayNums = (itineraryDayPlansState || [])
+            .map(dp => Number(dp?.day))
+            .filter(n => Number.isFinite(n) && n > 0);
+          const uniqueRetryDays = Array.from(new Set(retryDayNums));
+          const retryWrap = appendMessage('assistant', '', false, true);
+          const retryHtml = '<div>Day ' + escapeHtml(String(dayNum)) + ' has only one POI, so it cannot be removed.</div>' + _renderGuidedRemoveDayChoices(uniqueRetryDays);
+          setBubbleHtmlContent(retryWrap, retryHtml);
+          bindGuidedRemoveDayButtons(retryWrap);
+          const retryQ = 'Which day do you want to remove a POI from?';
+          chatHistory.push({ role: 'assistant', content: retryQ });
+          _appendConversationText('assistant', retryQ);
+          _persistUiState();
+          return;
+        }
         guidedRemoveContext = { day: dayNum };
         const poiWrap = appendMessage('assistant', '', false, true);
         setBubbleHtmlContent(poiWrap, _renderGuidedRemovePoiChoices(dayNum, poiNames));
@@ -1967,6 +1984,21 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         _appendSelection('Day ' + String(sourceDay));
         const plan = (itineraryDayPlansState || []).find(dp => Number(dp?.day) === sourceDay) || null;
         const poiNames = (plan?.pois || []).map(p => String(p?.name || '').trim()).filter(Boolean);
+        if (poiNames.length <= 1) {
+          const retryDayNums = (itineraryDayPlansState || [])
+            .map(dp => Number(dp?.day))
+            .filter(n => Number.isFinite(n) && n > 0);
+          const uniqueRetryDays = Array.from(new Set(retryDayNums));
+          const retryWrap = appendMessage('assistant', '', false, true);
+          const retryHtml = '<div>Day ' + escapeHtml(String(sourceDay)) + ' has only one POI, so it cannot be moved.</div>' + _renderGuidedMoveSourceDayChoices(uniqueRetryDays);
+          setBubbleHtmlContent(retryWrap, retryHtml);
+          bindGuidedMoveSourceDayButtons(retryWrap);
+          const retryQ = 'Which day do you want to move a POI from?';
+          chatHistory.push({ role: 'assistant', content: retryQ });
+          _appendConversationText('assistant', retryQ);
+          _persistUiState();
+          return;
+        }
         guidedMoveContext = { source_day: sourceDay, poi_name: null };
         const poiWrap = appendMessage('assistant', '', false, true);
         setBubbleHtmlContent(poiWrap, _renderGuidedMovePoiChoices(sourceDay, poiNames));

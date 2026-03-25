@@ -74,6 +74,17 @@ def execute_remove_poi(
     refill_day_plan_from_pool,
     poi_uid,
 ):
+    def _cannot_remove_last_poi(plan):
+        pois = list((plan or {}).get("pois") or [])
+        if len(pois) <= 1:
+            d = (plan or {}).get("day")
+            return {
+                "kind": "error",
+                "status": 400,
+                "message": f"Day {d} has only one POI, so it cannot be removed.",
+            }
+        return None
+
     source_plan = None
     if day is not None:
         source_plan = find_day_plan(day_plans, day)
@@ -109,6 +120,10 @@ def execute_remove_poi(
                 "question": f"I found multiple possible POIs matching '{poi_name}' in days {days}. Please tell me the day number or full POI name.",
                 "parsed": parsed,
             }
+
+    guard = _cannot_remove_last_poi(source_plan)
+    if guard:
+        return guard
 
     removed = _remove_poi_from_plan(source_plan, poi_name, pick_poi_match, optimize_route_greedy_tsp, get_poi_duration)
     if not removed:
