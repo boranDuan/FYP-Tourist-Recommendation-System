@@ -32,9 +32,7 @@
     <div class="filter" data-filter-key="attraction" data-base-label="Attraction">
       <button type="button" class="filter-btn">Attraction</button>
       <div class="filter-dropdown">
-        <div class="filter-option" data-label="Attraction">All attractions</div>
         <div class="filter-option" data-label="Museum">Museum</div>
-        <div class="filter-option" data-label="Historic site">Historic Site</div>
         <div class="filter-option" data-label="Church">Church</div>
         <div class="filter-option" data-label="Gallery">Gallery</div>
       </div>
@@ -127,10 +125,7 @@ function _buildAutocompleteRequest(inputText) {
 // UI 名称（显示给用户） → Google Places API type（API 可以识别）
 const filterTypeMapping = {
   // Attraction 类别
-  'Attraction': ['tourist_attraction', 'point_of_interest', 'establishment'],
   'Museum': ['museum'],
-  'Historic site': ['establishment', 'point_of_interest'],
-  'Historic Site': ['establishment', 'point_of_interest'], // 兼容大小写
   'Church': ['church'],
   'Gallery': ['art_gallery'],
   
