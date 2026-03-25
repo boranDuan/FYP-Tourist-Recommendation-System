@@ -3118,8 +3118,8 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       if (visitDate < today) errors.push('Q2: Start date cannot be in the past.');
     }
     if (visitDate && visitDateEnd && visitDateEnd < visitDate) errors.push('Q2: End date cannot be earlier than start date.');
-    if (interestsRankOrder.length === 0 && !interestsOther) errors.push('Q5: Please select at least one type of place or specify in Other.');
-    if (!pace) errors.push('Q8: Please select your travel pace.');
+    if (interestsRankOrder.length === 0 && !interestsOther) errors.push('Q3: Please select at least one type of place or specify in Other.');
+    if (!pace) errors.push('Q5: Please select your travel pace.');
 
     if (errors.length > 0) {
       errEl.textContent = errors.join(' ');
