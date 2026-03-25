@@ -366,6 +366,16 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function _resetWrapToDefaultAssistantStyle(wrap) {
+    if (!wrap) return;
+    wrap.classList.remove('ai-edit-mode-message');
+    const bubble = wrap.querySelector('.ai-msg-bubble');
+    if (bubble) {
+      bubble.classList.remove('ai-edit-mode-assistant');
+      bubble.classList.remove('ai-edit-mode-user');
+    }
+  }
+
   function escapeHtml(str) {
     return String(str || '')
       .replace(/&/g, '&amp;')
@@ -1207,6 +1217,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
         prefix = 'Updated itinerary (v' + String(localResult.version || '?') + '): removed ' + removedName + '.' + addedText;
       }
       const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
+      _resetWrapToDefaultAssistantStyle(placeholderWrap);
       setBubbleHtmlContent(placeholderWrap, html);
       bindItineraryDayEvents(placeholderWrap);
       const appliedDay = Number(localResult.appliedDay) || 1;
@@ -1260,6 +1271,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           prefix = 'Updated itinerary (v' + String(displayV || '?') + '): removed ' + removedName + '.' + addedText;
         }
         const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
+        _resetWrapToDefaultAssistantStyle(placeholderWrap);
         setBubbleHtmlContent(placeholderWrap, html);
         bindItineraryDayEvents(placeholderWrap);
         if (typeof window.setItineraryDayPlans === 'function') {
@@ -2730,6 +2742,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
                 prefix = 'Updated itinerary (v' + String(displayV || '?') + '): removed ' + removedName + '.' + addedText;
               }
               const html = '<div style="margin-bottom:8px;">' + escapeHtml(prefix) + '</div>' + renderItineraryHtml(itineraryDayPlansState);
+              _resetWrapToDefaultAssistantStyle(placeholderWrap);
               setBubbleHtmlContent(placeholderWrap, html);
               bindItineraryDayEvents(placeholderWrap);
               if (typeof window.setItineraryDayPlans === 'function') {
