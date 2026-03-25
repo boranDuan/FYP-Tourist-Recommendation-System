@@ -716,7 +716,26 @@ def execute_add_must_visit(
     for dp in day_plans:
         for p in (dp.get("pois") or []):
             if target_uid and poi_uid(p) == target_uid:
-                return {"kind": "error", "status": 400, "message": f"'{target_poi.get('name') or effective_poi_name}' is already in your itinerary."}
+                existing_name = str(target_poi.get("name") or effective_poi_name).strip() or effective_poi_name
+                parsed["needs_clarification"] = True
+                parsed["clarification_type"] = "reenter_add_poi_name"
+                parsed["clarification_options"] = []
+                parsed["clarification_question"] = (
+                    f"'{existing_name}' is already in your itinerary.\n"
+                    "Please type the exact POI name you want to add."
+                )
+                # Clear stale candidate hints so the next input is treated as a fresh POI name.
+                parsed["constraints"] = dict(parsed.get("constraints") or {})
+                parsed["constraints"].pop("candidate_selected", None)
+                parsed["constraints"].pop("candidate_selected_from_clarification", None)
+                parsed["constraints"].pop("proposed_poi_name", None)
+                return {
+                    "kind": "clarify",
+                    "question": parsed["clarification_question"],
+                    "clarification_type": parsed["clarification_type"],
+                    "clarification_options": parsed["clarification_options"],
+                    "parsed": parsed,
+                }
 
     chosen_day = day
     if add_mode == "append":
