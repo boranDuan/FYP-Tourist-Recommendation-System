@@ -409,6 +409,32 @@ This will help me recommend attractions and generate a realistic day-by-day plan
     });
   }
 
+  function _syncRestoredEditSessionBlocks() {
+    const blocks = Array.from(messagesEl.querySelectorAll('.ai-edit-session-block'));
+    if (!blocks.length) {
+      currentEditSessionBlock = null;
+      return;
+    }
+    if (!isItineraryEditMode) {
+      blocks.forEach(block => _lockEditSessionBlockInteractions(block));
+      currentEditSessionBlock = null;
+      return;
+    }
+    const unlockedBlocks = blocks.filter(block => block.dataset.sessionLocked !== '1');
+    const currentBlock = unlockedBlocks.length ? unlockedBlocks[unlockedBlocks.length - 1] : blocks[blocks.length - 1];
+    blocks.forEach(block => {
+      if (block === currentBlock) return;
+      _lockEditSessionBlockInteractions(block);
+    });
+    currentBlock.dataset.sessionLocked = '0';
+    currentBlock.querySelectorAll('.ai-edit-session-cancel-btn').forEach(btn => {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+    });
+    currentEditSessionBlock = currentBlock;
+  }
+
   function _persistUiSnapshot() {
     if (suppressUiPersistence) return;
     if (Number.isFinite(activeTripId) && activeTripId > 0) {
@@ -435,6 +461,7 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       guestCandidatePoolState = snapshot.guest_candidate_pool;
     }
     _restoreUiState(snapshot.ui_state || null);
+    _syncRestoredEditSessionBlocks();
     _rebindRestoredUiInteractions();
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return true;
@@ -2378,6 +2405,26 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           _persistUiState();
           return;
         }
+        if (action === 'adjust_trip_days') {
+          guidedEditAction = null;
+          guidedAddContext = null;
+          guidedRemoveContext = null;
+          guidedMoveContext = null;
+          guidedReplaceContext = null;
+          guidedAdjustPoiNumbersContext = null;
+          pendingEditSlot = {
+            intent: 'adjust_day_plans',
+            slot: 'day_count',
+            prompt: 'How many days do you want for this trip? (e.g., 2 days or 4 days)',
+            parsed_base: { intent: 'adjust_day_plans', constraints: { day_count: null } }
+          };
+          const qDays = 'How many days do you want for this trip? (e.g., 2 days or 4 days)';
+          appendMessage('assistant', qDays);
+          chatHistory.push({ role: 'assistant', content: qDays });
+          _appendConversationText('assistant', qDays);
+          _persistUiState();
+          return;
+        }
         guidedEditAction = action;
         const q = _guidedActionPrompt(action);
         appendMessage('assistant', q);
@@ -3119,6 +3166,26 @@ This will help me recommend attractions and generate a realistic day-by-day plan
           guidedEditAction = null;
           awaitingEditClarification = false;
         }
+      } else if (pendingEditSlot.intent === 'adjust_day_plans' && pendingEditSlot.slot === 'day_count') {
+        const m = String(raw || '').match(/\d+/);
+        const n = m ? Number(m[0]) : NaN;
+        if (Number.isFinite(n) && n > 0) {
+          guidedParsed = {
+            intent: 'adjust_day_plans',
+            day: null,
+            poi_name: null,
+            target_day: null,
+            constraints: { day_count: n },
+            confidence: 1,
+            needs_clarification: false,
+            clarification_question: null,
+            clarification_type: null,
+            clarification_options: null
+          };
+          _clearPendingEditSlot();
+          guidedEditAction = null;
+          awaitingEditClarification = false;
+        }
       }
     }
     if (hadGuidedAction) {
@@ -3159,7 +3226,12 @@ This will help me recommend attractions and generate a realistic day-by-day plan
             clarification_options: null
           };
         } else {
-          outbound = 'adjust trip days to ' + raw;
+          pendingEditSlot = {
+            intent: 'adjust_day_plans',
+            slot: 'day_count',
+            prompt: 'How many days do you want for this trip? (e.g., 2 days or 4 days)',
+            parsed_base: { intent: 'adjust_day_plans', constraints: { day_count: null } }
+          };
         }
       }
       else outbound = raw;
@@ -3285,6 +3357,13 @@ This will help me recommend attractions and generate a realistic day-by-day plan
       }
       if (pendingEditSlot.intent === 'adjust_poi_numbers' && pendingEditSlot.slot === 'poi_count') {
         const q = 'Please enter a valid POI number (minimum 2), e.g., 2 or 4.';
+        setBubbleContent(placeholderWrap, q);
+        chatHistory.push({ role: 'assistant', content: q });
+        _appendConversationText('assistant', q);
+        return;
+      }
+      if (pendingEditSlot.intent === 'adjust_day_plans' && pendingEditSlot.slot === 'day_count') {
+        const q = 'Please enter a valid day number (minimum 1), e.g., 2 or 4 days.';
         setBubbleContent(placeholderWrap, q);
         chatHistory.push({ role: 'assistant', content: q });
         _appendConversationText('assistant', q);
