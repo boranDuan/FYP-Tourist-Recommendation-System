@@ -42,7 +42,21 @@ function _safeSummaryText(summary) {
     .map(line => String(line || '').trim())
     .filter(line => line);
 
-  const mustVisitLine = lines.find(line => /^must-visit\s*:/i.test(line)) || '';
+  let mustVisitLine = lines.find(line => /^must-visit\s*:/i.test(line)) || '';
+  if (mustVisitLine) {
+    const match = mustVisitLine.match(/^(\s*must-visit\s*:\s*)(.*)$/i);
+    if (match) {
+      const prefix = match[1];
+      const rawItems = String(match[2] || '').trim();
+      if (rawItems && !/^\(none\)$/i.test(rawItems)) {
+        const cleanedItems = rawItems
+          .split(',')
+          .map(item => String(item || '').replace(/\s*\(\s*\d+(?:\.\d+)?\s*h\s*\)\s*$/i, '').trim())
+          .filter(Boolean);
+        mustVisitLine = prefix + (cleanedItems.length ? cleanedItems.join(', ') : '(none)');
+      }
+    }
+  }
   const kept = [mustVisitLine].filter(Boolean).join('\n');
   if (!kept) return '';
   return kept.length > 220 ? (kept.slice(0, 220) + '...') : kept;
@@ -142,7 +156,8 @@ async function loadMyTrips() {
 
 function renderMyTrips(container, trips) {
   container.innerHTML = '';
-  trips.forEach((trip) => {
+  const totalTrips = Array.isArray(trips) ? trips.length : 0;
+  trips.forEach((trip, idx) => {
     const tripId = Number(trip.trip_id || 0);
     const card = document.createElement('div');
     card.className = 'my-trip-card';
@@ -162,9 +177,10 @@ function renderMyTrips(container, trips) {
     const interestLabels = _topInterestLabels(trip.interests || {}, 3);
     const interestBadgesHtml = interestLabels.map((label) => '<span class="my-trip-badge">' + label + '</span>').join('');
 
+    const userTripNumber = Math.max(1, totalTrips - idx);
     card.innerHTML = `
       <div class="my-trip-card-header">
-        <div class="my-trip-title">Trip ${trip.trip_id}</div>
+        <div class="my-trip-title">Trip ${userTripNumber}</div>
         <div class="my-trip-version">${versionText}</div>
       </div>
       <div class="my-trip-subtitle">${dateRangeText} • ${placeCount} place${placeCount === 1 ? '' : 's'}</div>
