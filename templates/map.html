@@ -272,8 +272,24 @@ function loadGoogleMapScript(apiKey){
 
 
 function initMap(){
-  // 默认中心点（都柏林），如果无法获取用户位置则使用
-  const dublin={lat:53.3498,lng:-6.2603};
+  // 默认中心点（都柏林），如果无法获取用户位置或用户不在都柏林范围内则使用
+  const dublin = (typeof DUBLIN_CENTER === 'object' && DUBLIN_CENTER)
+    ? DUBLIN_CENTER
+    : { lat: 53.3498, lng: -6.2603 };
+  const dublinBounds = (typeof DUBLIN_BOUNDS === 'object' && DUBLIN_BOUNDS)
+    ? DUBLIN_BOUNDS
+    : { north: 53.45, south: 53.25, east: -6.1, west: -6.4 };
+
+  function isWithinDublin(lat, lng) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    return (
+      lat <= dublinBounds.north &&
+      lat >= dublinBounds.south &&
+      lng <= dublinBounds.east &&
+      lng >= dublinBounds.west
+    );
+  }
+
   map=new google.maps.Map(document.getElementById("map"),{
     zoom:12,
     center:dublin,
@@ -292,8 +308,13 @@ function initMap(){
           lat: position.coords.latitude,
           lng: position.coords.longitude
         };
-        map.setCenter(userLocation);
-        map.setZoom(15); // 更近的缩放级别，类似 Google Maps
+        if (isWithinDublin(userLocation.lat, userLocation.lng)) {
+          map.setCenter(userLocation);
+          map.setZoom(15); // 用户在都柏林内：定位到用户当前位置
+        } else {
+          map.setCenter(dublin);
+          map.setZoom(12); // 用户不在都柏林：展示都柏林市中心
+        }
       },
       (error) => {
         // 如果获取位置失败，保持默认中心点（都柏林）
@@ -709,15 +730,17 @@ function renderCurrentDayProjection() {
 
   // 使用 Directions API 渲染“真实道路路线”，并自动优化中间点顺序。
   if (itineraryDirectionsService) {
-    const origin = points[0].pos;
-    const destination = points[points.length - 1].pos;
-    const waypointItems = points.slice(1, -1);
+    // 选取彼此最远的两点作为起终点，通常可减少“回头路”。
+    const [originIdx, destinationIdx] = _pickFarthestEndpoints(points);
+    const origin = points[originIdx].pos;
+    const destination = points[destinationIdx].pos;
+    const waypointItems = points.filter((_, idx) => idx !== originIdx && idx !== destinationIdx);
     const waypoints = waypointItems.map(x => ({ location: x.pos, stopover: true }));
     const request = {
       origin,
       destination,
       waypoints,
-      optimizeWaypoints: false,
+      optimizeWaypoints: true,
       travelMode: google.maps.TravelMode.WALKING,
     };
 
@@ -727,6 +750,13 @@ function renderCurrentDayProjection() {
         return;
       }
       if (status === google.maps.DirectionsStatus.OK && res && res.routes && res.routes[0]) {
+        const route = res.routes[0];
+        const waypointOrder = Array.isArray(route.waypoint_order) ? route.waypoint_order : [];
+        const orderedWaypointItems = waypointOrder.length === waypointItems.length
+          ? waypointOrder.map(i => waypointItems[i]).filter(Boolean)
+          : waypointItems;
+        const orderedPoints = [points[originIdx], ...orderedWaypointItems, points[destinationIdx]];
+
         itineraryDirectionsRenderer = new google.maps.DirectionsRenderer({
           map,
           suppressMarkers: true,
@@ -738,7 +768,7 @@ function renderCurrentDayProjection() {
           },
         });
         itineraryDirectionsRenderer.setDirections(res);
-        _renderDayMarkersInOrder(points);
+        _renderDayMarkersInOrder(orderedPoints);
         return;
       }
 
