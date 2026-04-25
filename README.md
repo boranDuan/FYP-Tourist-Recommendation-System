@@ -33,7 +33,11 @@ The system provides personalized attraction suggestions through an interactive m
 - **Itinerary Generator**
 - **Itinerary Edit Manager**
 
-## Quick Start
+## Live Demo
+
+Deployed website: [https://fyp-tourist-recommendation-system.onrender.com/map](https://fyp-tourist-recommendation-system.onrender.com/map)
+
+## Local Run (Optional)
 
 ### 1) Clone and install dependencies
 
