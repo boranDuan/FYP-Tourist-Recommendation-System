@@ -75,14 +75,3 @@ flask --app app.py run --debug
 
 Open: [http://127.0.0.1:5000/map](http://127.0.0.1:5000/map)
 
-## Evaluation
-
-The project is evaluated through:
-
-- Functional testing of recommendation and itinerary workflows
-- User-based evaluation on recommendation relevance and usability
-
-## Notes
-
-- This project is designed for academic/research purposes.
-- API usage may require valid keys, quota, and compliance with provider terms.
